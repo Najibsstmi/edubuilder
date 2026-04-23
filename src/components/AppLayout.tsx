@@ -17,7 +17,7 @@ export function AppLayout() {
           <NavLink to="/">Dashboard</NavLink>
           <NavLink to="/build">Bina Set Soalan</NavLink>
           {(profile?.role === 'admin' || profile?.role === 'master_admin') && (
-            <NavLink to="/admin/items/new">Masukkan Soalan</NavLink>
+            <NavLink to="/masukkan-soalan">Masukkan Soalan</NavLink>
           )}
           {profile?.role === 'master_admin' && (
             <NavLink to="/master/users">Pengurusan User</NavLink>

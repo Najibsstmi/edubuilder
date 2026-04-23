@@ -3,12 +3,14 @@ import { useAuth } from './contexts/AuthContext';
 import { AppLayout } from './components/AppLayout';
 import { RequireAuth } from './components/RequireAuth';
 import ProtectedMaster from './components/ProtectedMaster';
+import ProtectedAdmin from './components/ProtectedAdmin';
 import { LoginPage } from './pages/LoginPage';
 import { SignupPage } from './pages/SignupPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { MasterAdminUsersPage } from './pages/MasterAdminUsersPage';
 import MasterAdminDashboard from './pages/MasterAdminDashboard';
 import { AdminItemCreatePage } from './pages/AdminItemCreatePage';
+import ItemFormPage from './pages/ItemFormPage';
 import { BuildPaperPage } from './pages/BuildPaperPage';
 
 export default function App() {
@@ -41,6 +43,14 @@ export default function App() {
         />
         <Route path="master/users" element={<MasterAdminUsersPage />} />
         <Route path="admin/items/new" element={<AdminItemCreatePage />} />
+        <Route
+          path="masukkan-soalan"
+          element={
+            <ProtectedAdmin>
+              <ItemFormPage />
+            </ProtectedAdmin>
+          }
+        />
         <Route path="build" element={<BuildPaperPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
