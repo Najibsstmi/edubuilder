@@ -1,6 +1,6 @@
 export type AppRole = 'master_admin' | 'admin' | 'user';
 export type AccountType = 'free' | 'full';
-export type ProfileStatus = 'active' | 'pending' | 'suspended';
+export type ProfileStatus = 'active' | 'pending' | 'approved' | 'suspended';
 
 export interface School {
   id: string;
@@ -25,6 +25,8 @@ export interface Profile {
   state_name: string | null;
   ppd_name: string | null;
   school_type: string | null;
+  approved_by?: string | null;
+  approved_at?: string | null;
 }
 
 export interface Item {

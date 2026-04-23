@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import type { School } from '../types';
 
-async function applyPostSignupLogic(userId: string, schoolId: string, school: School) {
+async function applyPostSignupLogic(userId: string, fullName: string, email: string, schoolId: string, school: School) {
   const { count, error: countError } = await supabase
     .from('profiles')
     .select('*', { count: 'exact', head: true })
@@ -15,9 +15,36 @@ async function applyPostSignupLogic(userId: string, schoolId: string, school: Sc
 
   const firstAdminForSchool = !count || count === 0;
   const payload = firstAdminForSchool
-    ? { school_id: schoolId, role: 'admin', status: 'active', account_type: 'full', state_name: school.state_name, ppd_name: school.ppd_name, school_type: school.school_type }
-    : { school_id: schoolId, role: 'user', status: 'pending', account_type: 'free', state_name: school.state_name, ppd_name: school.ppd_name, school_type: school.school_type };
+    ? {
+        id: userId,
+        full_name: fullName,
+        email,
+        role: 'admin' as const,
+        status: 'active' as const,
+        account_type: 'full' as const,
+        school_id: schoolId,
+        state_name: school.state_name,
+        ppd_name: school.ppd_name,
+        school_type: school.school_type,
+      }
+    : {
+        id: userId,
+        full_name: fullName,
+        email,
+        role: 'user' as const,
+        status: 'pending' as const,
+        account_type: 'free' as const,
+        school_id: schoolId,
+        state_name: school.state_name,
+        ppd_name: school.ppd_name,
+        school_type: school.school_type,
+      };
 
+  const { error: insertError } = await supabase.from('profiles').insert(payload);
+  if (!insertError) return;
+
+  // Jika row profile telah diwujudkan oleh trigger auth, fallback ke update.
+  if (insertError.code !== '23505') throw insertError;
   const { error: updateError } = await supabase.from('profiles').update(payload).eq('id', userId);
   if (updateError) throw updateError;
 }
@@ -98,7 +125,7 @@ export function SignupPage() {
     }
 
     try {
-      await applyPostSignupLogic(data.user.id, selectedSchool.id, selectedSchool);
+      await applyPostSignupLogic(data.user.id, fullName, email, selectedSchool.id, selectedSchool);
       navigate('/login');
     } catch (signupLogicError) {
       console.error(signupLogicError);
