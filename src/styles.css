@@ -308,6 +308,74 @@ th, td { padding: 12px; border-bottom: 1px solid #e2e8f0; text-align: left; }
   resize: vertical;
 }
 
+.rich-editor-shell {
+  border: 1px solid #cbd5e1;
+  border-radius: 16px;
+  background: white;
+  overflow: hidden;
+}
+
+.rich-editor-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px;
+  border-bottom: 1px solid #e2e8f0;
+  background: #f8fafc;
+}
+
+.rich-editor-btn {
+  border: 1px solid #cbd5e1;
+  background: white;
+  color: #0f172a;
+  border-radius: 10px;
+  padding: 0.45rem 0.7rem;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.rich-editor-btn:hover {
+  background: #eff6ff;
+  border-color: #93c5fd;
+}
+
+.rich-editor-content {
+  min-height: 180px;
+  padding: 14px;
+  outline: none;
+  color: #0f172a;
+}
+
+.rich-editor-content p {
+  margin: 0 0 0.85rem;
+}
+
+.rich-editor-content ul,
+.rich-editor-content ol {
+  padding-left: 1.3rem;
+}
+
+.rich-editor-content table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1rem 0;
+}
+
+.rich-editor-content th,
+.rich-editor-content td {
+  border: 1px solid #cbd5e1;
+  padding: 8px 10px;
+  vertical-align: top;
+}
+
+.rich-editor-content img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 12px;
+  display: block;
+  margin: 0.75rem 0;
+}
+
 .section-mini-header h3 {
   margin: 0;
   font-size: 1rem;

@@ -1,6 +1,8 @@
-import { FormEvent, useMemo, useState } from "react"
+import { FormEvent, Suspense, lazy, useMemo, useState } from "react"
 import { supabase } from "../lib/supabase"
 import { useUser } from "../context/UserContext"
+
+const RichEditor = lazy(() => import("../components/RichEditor"))
 
 type PaperType = "paper_1" | "paper_2"
 type SectionType = "A" | "B" | "C" | ""
@@ -19,6 +21,108 @@ const initialOptions: McqOption[] = [
   { label: "D", text: "" },
 ]
 
+const temaOptions = {
+  4: [
+    {
+      tema: "Penyenggaraan dan Kesinambungan Hidup",
+      bidang: [
+        {
+          code: "1.0",
+          name: "Langkah Keselamatan dalam Makmal",
+          standardKandungan: [
+            {
+              code: "1.1",
+              name: "Peralatan perlindungan diri",
+              standardPembelajaran: [
+                {
+                  code: "1.1.1",
+                  name: "Menyatakan jenis dan fungsi PPE",
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+    {
+      tema: "Penerokaan Unsur dalam Alam",
+      bidang: [
+        {
+          code: "8.0",
+          name: "Unsur dan Bahan",
+          standardKandungan: [
+            {
+              code: "8.1",
+              name: "Asas Jirim",
+              standardPembelajaran: [
+                {
+                  code: "8.1.1",
+                  name: "Menyatakan maksud atom dan molekul",
+                },
+                {
+                  code: "8.1.2",
+                  name: "Membandingkan unsur dan sebatian",
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+  ],
+
+  5: [
+    {
+      tema: "Penyenggaraan dan Kesinambungan Hidup",
+      bidang: [
+        {
+          code: "1.0",
+          name: "Mikroorganisma",
+          standardKandungan: [
+            {
+              code: "1.1",
+              name: "Dunia Mikroorganisma",
+              standardPembelajaran: [
+                {
+                  code: "1.1.1",
+                  name: "Mengelaskan mikroorganisma",
+                },
+                {
+                  code: "1.1.2",
+                  name: "Menerangkan faktor pertumbuhan mikroorganisma",
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+  ],
+} as const
+
+const constructCodeMap: Record<string, string[]> = {
+  mengingat: ["PS0101", "PS0102", "PS0103"],
+  memahami: ["KS0101", "KS0102", "KS0103", "KS0104"],
+  mengaplikasi: ["KS0201", "KS0202"],
+  menganalisis: ["KS0301", "KS0302"],
+  menilai: ["KS0401"],
+  mencipta: ["KS0501", "KS0502"],
+  kemahiran_proses_sains: [
+    "SS0101",
+    "SS0102",
+    "SS0103",
+    "SS0104",
+    "SS0105",
+    "SS0106",
+    "SS0107",
+    "SS0108",
+    "SS0109",
+    "SS0110",
+    "SS0111",
+    "SS0112",
+  ],
+}
+
 const constructOptions = [
   "mengingat",
   "memahami",
@@ -32,6 +136,11 @@ const constructOptions = [
 export default function ItemFormPage() {
   const { profile } = useUser()
 
+  function hasRichTextContent(html: string) {
+    const text = html.replace(/<[^>]*>/g, " ").replace(/&nbsp;/g, " ").trim()
+    return text.length > 0
+  }
+
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState("")
 
@@ -40,9 +149,8 @@ export default function ItemFormPage() {
   const [paper, setPaper] = useState<PaperType>("paper_1")
   const [section, setSection] = useState<SectionType>("")
   const [questionNoReference, setQuestionNoReference] = useState("")
-  const [themeName, setThemeName] = useState("")
-  const [bidangLearningCode, setBidangLearningCode] = useState("")
-  const [bidangLearningName, setBidangLearningName] = useState("")
+  const [selectedTema, setSelectedTema] = useState("")
+  const [selectedBidang, setSelectedBidang] = useState("")
   const [standardKandungan, setStandardKandungan] = useState("")
   const [standardPembelajaran, setStandardPembelajaran] = useState("")
   const [mainConstruct, setMainConstruct] = useState("")
@@ -73,6 +181,30 @@ export default function ItemFormPage() {
 
   const selectedPaperLabel = paper === "paper_1" ? "Kertas 1" : "Kertas 2"
 
+  const temaList = temaOptions[tingkatan]
+
+  const selectedTemaObj =
+    temaList.find((t) => t.tema === selectedTema) || null
+
+  const bidangList = selectedTemaObj?.bidang || []
+
+  const selectedBidangObj =
+    bidangList.find(
+      (b) => `${b.code} - ${b.name}` === selectedBidang,
+    ) || null
+
+  const standardKandunganList = selectedBidangObj?.standardKandungan || []
+
+  const selectedStandardKandunganObj =
+    standardKandunganList.find(
+      (s) => `${s.code} - ${s.name}` === standardKandungan,
+    ) || null
+
+  const standardPembelajaranList =
+    selectedStandardKandunganObj?.standardPembelajaran || []
+
+  const constructCodeOptions = mainConstruct ? constructCodeMap[mainConstruct] || [] : []
+
   function handleOptionChange(index: number, value: string) {
     setOptions((prev) =>
       prev.map((opt, i) => (i === index ? { ...opt, text: value } : opt)),
@@ -93,12 +225,12 @@ export default function ItemFormPage() {
       return
     }
 
-    if (!stemText.trim()) {
+    if (!hasRichTextContent(stemText)) {
       setMessage("Stem soalan wajib diisi.")
       return
     }
 
-    if (!answerSchemeText.trim()) {
+    if (!hasRichTextContent(answerSchemeText)) {
       setMessage("Panduan pemarkahan wajib diisi.")
       return
     }
@@ -134,10 +266,10 @@ export default function ItemFormPage() {
           section: paper === "paper_2" ? section || null : null,
           question_no_reference: questionNoReference || null,
           item_type: itemType,
-          theme_name: themeName || null,
-          bidang_learning_code: bidangLearningCode || null,
-          bidang_learning_name: bidangLearningName || null,
-          standard_kandungan: standardKandungan || null,
+          theme_name: selectedTema || null,
+          bidang_learning_code: selectedBidangObj?.code || null,
+          bidang_learning_name: selectedBidangObj?.name || null,
+          standard_kandungan: selectedStandardKandunganObj?.code || null,
           standard_pembelajaran: standardPembelajaran || null,
           main_construct: mainConstruct || null,
           construct_code: constructCode || null,
@@ -145,8 +277,10 @@ export default function ItemFormPage() {
           marks,
           stimulus_type: stimulusType || null,
           stem_text: stemText,
+          stem_html: stemText,
           question_instruction: questionInstruction || null,
           answer_scheme_text: answerSchemeText,
+          marking_scheme_html: answerSchemeText,
           answer_final: answerFinal || null,
           explanation_text: explanationText || null,
           source_type: sourceType || null,
@@ -189,9 +323,8 @@ export default function ItemFormPage() {
   function resetForm() {
     setItemCode("")
     setQuestionNoReference("")
-    setThemeName("")
-    setBidangLearningCode("")
-    setBidangLearningName("")
+    setSelectedTema("")
+    setSelectedBidang("")
     setStandardKandungan("")
     setStandardPembelajaran("")
     setMainConstruct("")
@@ -368,12 +501,13 @@ export default function ItemFormPage() {
                 </Field>
 
                 <Field label="Stem Soalan">
-                  <textarea
-                    value={stemText}
-                    onChange={(e) => setStemText(e.target.value)}
-                    className="input textarea-lg"
-                    placeholder="Tulis stem soalan di sini"
-                  />
+                  <Suspense fallback={<div className="input">Memuat editor...</div>}>
+                    <RichEditor
+                      value={stemText}
+                      onChange={setStemText}
+                      placeholder="Taip stem soalan, masukkan rajah, jadual atau stimulus di sini..."
+                    />
+                  </Suspense>
                 </Field>
 
                 {isPaper1 && (
@@ -419,12 +553,13 @@ export default function ItemFormPage() {
                 )}
 
                 <Field label="Panduan Pemarkahan">
-                  <textarea
-                    value={answerSchemeText}
-                    onChange={(e) => setAnswerSchemeText(e.target.value)}
-                    className="input textarea-lg"
-                    placeholder="Wajib isi panduan pemarkahan"
-                  />
+                  <Suspense fallback={<div className="input">Memuat editor...</div>}>
+                    <RichEditor
+                      value={answerSchemeText}
+                      onChange={setAnswerSchemeText}
+                      placeholder="Masukkan panduan pemarkahan di sini..."
+                    />
+                  </Suspense>
                 </Field>
 
                 <Field label="Penerangan / Rasional">
@@ -444,54 +579,93 @@ export default function ItemFormPage() {
             >
               <div className="form-grid form-grid-2">
                 <Field label="Tema">
-                  <input
-                    value={themeName}
-                    onChange={(e) => setThemeName(e.target.value)}
+                  <select
+                    value={selectedTema}
+                    onChange={(e) => {
+                      setSelectedTema(e.target.value)
+                      setSelectedBidang("")
+                      setStandardKandungan("")
+                      setStandardPembelajaran("")
+                    }}
                     className="input"
-                    placeholder="Contoh: Tenaga dan Kelestarian Hidup"
-                  />
+                  >
+                    <option value="">Pilih tema</option>
+                    {temaList.map((t) => (
+                      <option key={t.tema} value={t.tema}>
+                        {t.tema}
+                      </option>
+                    ))}
+                  </select>
                 </Field>
 
-                <Field label="Kod Bidang Pembelajaran">
-                  <input
-                    value={bidangLearningCode}
-                    onChange={(e) => setBidangLearningCode(e.target.value)}
+                <Field label="Bidang Pembelajaran">
+                  <select
+                    value={selectedBidang}
+                    onChange={(e) => {
+                      setSelectedBidang(e.target.value)
+                      setStandardKandungan("")
+                      setStandardPembelajaran("")
+                    }}
                     className="input"
-                    placeholder="Contoh: 11.0"
-                  />
-                </Field>
-
-                <Field label="Nama Bidang Pembelajaran">
-                  <input
-                    value={bidangLearningName}
-                    onChange={(e) => setBidangLearningName(e.target.value)}
-                    className="input"
-                    placeholder="Contoh: Daya dan Gerakan"
-                  />
+                    disabled={!selectedTema}
+                  >
+                    <option value="">Pilih bidang</option>
+                    {bidangList.map((b) => {
+                      const value = `${b.code} - ${b.name}`
+                      return (
+                        <option key={value} value={value}>
+                          {value}
+                        </option>
+                      )
+                    })}
+                  </select>
                 </Field>
 
                 <Field label="Standard Kandungan">
-                  <input
+                  <select
                     value={standardKandungan}
-                    onChange={(e) => setStandardKandungan(e.target.value)}
+                    onChange={(e) => {
+                      setStandardKandungan(e.target.value)
+                      setStandardPembelajaran("")
+                    }}
                     className="input"
-                    placeholder="Contoh: 11.3"
-                  />
+                    disabled={!selectedBidang}
+                  >
+                    <option value="">Pilih standard kandungan</option>
+                    {standardKandunganList.map((s) => {
+                      const value = `${s.code} - ${s.name}`
+                      return (
+                        <option key={value} value={value}>
+                          {value}
+                        </option>
+                      )
+                    })}
+                  </select>
                 </Field>
 
                 <Field label="Standard Pembelajaran">
-                  <input
+                  <select
                     value={standardPembelajaran}
                     onChange={(e) => setStandardPembelajaran(e.target.value)}
                     className="input"
-                    placeholder="Contoh: 11.3.1"
-                  />
+                    disabled={!standardKandungan}
+                  >
+                    <option value="">Pilih standard pembelajaran</option>
+                    {standardPembelajaranList.map((sp) => (
+                      <option key={sp.code} value={sp.code}>
+                        {sp.code} - {sp.name}
+                      </option>
+                    ))}
+                  </select>
                 </Field>
 
                 <Field label="Konstruk Utama">
                   <select
                     value={mainConstruct}
-                    onChange={(e) => setMainConstruct(e.target.value)}
+                    onChange={(e) => {
+                      setMainConstruct(e.target.value)
+                      setConstructCode("")
+                    }}
                     className="input"
                   >
                     <option value="">Pilih konstruk</option>
@@ -504,20 +678,25 @@ export default function ItemFormPage() {
                 </Field>
 
                 <Field label="Kod Konstruk">
-                  <input
+                  <select
                     value={constructCode}
                     onChange={(e) => setConstructCode(e.target.value)}
                     className="input"
-                    placeholder="Contoh: KS0201"
-                  />
+                    disabled={!mainConstruct}
+                  >
+                    <option value="">Pilih kod konstruk</option>
+                    {constructCodeOptions.map((code) => (
+                      <option key={code} value={code}>
+                        {code}
+                      </option>
+                    ))}
+                  </select>
                 </Field>
 
                 <Field label="Aras Kesukaran">
                   <select
                     value={difficultyLevel}
-                    onChange={(e) =>
-                      setDifficultyLevel(e.target.value as DifficultyType)
-                    }
+                    onChange={(e) => setDifficultyLevel(e.target.value as DifficultyType)}
                     className="input"
                   >
                     <option value="rendah">rendah</option>
@@ -581,6 +760,22 @@ export default function ItemFormPage() {
                 <PreviewRow label="Bahagian" value={section || "-"} />
                 <PreviewRow label="Jenis Item" value={itemType} />
                 <PreviewRow label="Markah" value={String(marks)} />
+                <PreviewRow
+                  label="Bidang"
+                  value={
+                    selectedBidangObj
+                      ? `${selectedBidangObj.code} - ${selectedBidangObj.name}`
+                      : "-"
+                  }
+                />
+                <PreviewRow
+                  label="Std. Kandungan"
+                  value={selectedStandardKandunganObj?.code || "-"}
+                />
+                <PreviewRow
+                  label="Std. Pembelajaran"
+                  value={standardPembelajaran || "-"}
+                />
                 <PreviewRow label="Konstruk" value={mainConstruct || "-"} />
                 <PreviewRow label="Kod Konstruk" value={constructCode || "-"} />
                 <PreviewRow label="Aras" value={difficultyLevel} />
@@ -591,7 +786,11 @@ export default function ItemFormPage() {
             <Card title="Pratonton Kandungan" subtitle="Semakan cepat sebelum simpan.">
               <div className="mini-preview">
                 <div className="mini-preview-stem">
-                  {stemText || "Stem soalan akan dipaparkan di sini."}
+                  {hasRichTextContent(stemText) ? (
+                    <div dangerouslySetInnerHTML={{ __html: stemText }} />
+                  ) : (
+                    "Stem soalan akan dipaparkan di sini."
+                  )}
                 </div>
 
                 {isPaper1 && (

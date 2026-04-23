@@ -1,0 +1,116 @@
+.re2-wrap {
+  border: 1px solid #cbd5e1;
+  border-radius: 18px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.re2-label {
+  padding: 12px 14px 0;
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.re2-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px 14px;
+  border-bottom: 1px solid #e2e8f0;
+  background: #f8fafc;
+}
+
+.re2-btn {
+  border: 1px solid #cbd5e1;
+  background: white;
+  color: #0f172a;
+  border-radius: 10px;
+  padding: 0.5rem 0.75rem;
+  font-weight: 700;
+  font-size: 0.88rem;
+  cursor: pointer;
+}
+
+.re2-btn.active {
+  background: #0f172a;
+  color: white;
+  border-color: #0f172a;
+}
+
+.re2-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.re2-divider {
+  width: 1px;
+  height: 32px;
+  background: #cbd5e1;
+  margin: 0 4px;
+}
+
+.re2-table-panel {
+  padding: 14px;
+  border-bottom: 1px solid #e2e8f0;
+  background: #f8fafc;
+}
+
+.re2-table-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 180px));
+  gap: 14px;
+  margin-bottom: 12px;
+}
+
+.re2-table-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.re2-editor-shell {
+  padding: 14px;
+  min-height: 220px;
+}
+
+.rich-editor-content {
+  min-height: 180px;
+  color: #0f172a;
+}
+
+.rich-editor-content p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  color: #94a3b8;
+  float: left;
+  height: 0;
+  pointer-events: none;
+}
+
+.rich-editor-content table {
+  border-collapse: collapse;
+  width: 100%;
+  table-layout: fixed;
+  margin: 1rem 0;
+  overflow: hidden;
+}
+
+.rich-editor-content td,
+.rich-editor-content th {
+  border: 1px solid #cbd5e1;
+  padding: 10px;
+  vertical-align: top;
+  min-width: 1em;
+}
+
+.rich-editor-content img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 12px;
+  margin: 10px 0;
+}
+
+.rich-editor-content ul,
+.rich-editor-content ol {
+  padding-left: 1.25rem;
+}
