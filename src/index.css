@@ -114,3 +114,311 @@
 .rich-editor-content ol {
   padding-left: 1.25rem;
 }
+
+.options-grid-full {
+  grid-template-columns: 1fr;
+}
+
+.option-card-rich {
+  padding: 18px;
+}
+
+.option-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.option-title {
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.rich-preview-option {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.mini-option-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.mini-option-body {
+  color: #0f172a;
+}
+
+.mini-option-body p {
+  margin: 0.25rem 0;
+}
+
+.mini-option-body table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 8px;
+}
+
+.mini-option-body td,
+.mini-option-body th {
+  border: 1px solid #cbd5e1;
+  padding: 6px 8px;
+}
+
+.mini-option-body img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 10px;
+  margin-top: 8px;
+}
+
+/* ── Bank Soalan Admin ── */
+
+.header-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.stat-card {
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 18px;
+  padding: 18px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.04);
+}
+
+.stat-label {
+  color: #64748b;
+  font-size: 0.9rem;
+  margin-bottom: 8px;
+}
+
+.stat-value {
+  font-size: 1.9rem;
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.admin-alert {
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  color: #1d4ed8;
+  padding: 12px 14px;
+  border-radius: 14px;
+  margin-bottom: 16px;
+  font-weight: 600;
+}
+
+.bank-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(320px, 0.9fr);
+  gap: 20px;
+  margin-top: 20px;
+}
+
+.bank-card-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.bank-item-card {
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 20px;
+  padding: 18px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.04);
+  transition: 0.2s ease;
+}
+
+.bank-item-card.active {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.08);
+}
+
+.bank-item-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  align-items: flex-start;
+}
+
+.bank-item-code {
+  font-size: 1rem;
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.bank-item-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.bank-item-mark {
+  white-space: nowrap;
+  font-weight: 700;
+  color: #334155;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 999px;
+  padding: 0.45rem 0.8rem;
+}
+
+.bank-item-body {
+  margin-top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.bank-item-topic {
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.bank-item-construct {
+  color: #475569;
+  font-size: 0.92rem;
+}
+
+.bank-item-snippet {
+  color: #334155;
+  line-height: 1.55;
+  font-size: 0.94rem;
+}
+
+.bank-item-actions {
+  margin-top: 16px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.btn-sm {
+  padding: 0.65rem 0.9rem;
+  font-size: 0.88rem;
+}
+
+.btn-danger {
+  background: #dc2626;
+  color: white;
+}
+
+.btn-danger:hover {
+  background: #b91c1c;
+}
+
+.bank-preview-panel .sticky-preview {
+  position: sticky;
+  top: 20px;
+}
+
+.preview-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.preview-detail-head {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.preview-section-block {
+  border-top: 1px solid #e2e8f0;
+  padding-top: 16px;
+}
+
+.preview-section-block h3 {
+  margin: 0 0 10px;
+  color: #0f172a;
+  font-size: 1rem;
+}
+
+.preview-html {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  padding: 14px;
+  color: #0f172a;
+  line-height: 1.6;
+}
+
+.preview-html table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.preview-html td,
+.preview-html th {
+  border: 1px solid #cbd5e1;
+  padding: 8px;
+}
+
+.preview-html img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 10px;
+}
+
+.preview-answer-box {
+  background: #ecfdf5;
+  border: 1px solid #bbf7d0;
+  color: #166534;
+  padding: 12px 14px;
+  border-radius: 14px;
+  font-weight: 600;
+}
+
+.empty-state {
+  color: #64748b;
+  text-align: center;
+  padding: 22px;
+}
+
+.badge-green {
+  background: #dcfce7;
+  color: #15803d;
+}
+
+.badge-red {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.badge-yellow {
+  background: #fef3c7;
+  color: #b45309;
+}
+
+@media (max-width: 1200px) {
+  .bank-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .stats-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 768px) {
+  .stats-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .bank-item-top {
+    flex-direction: column;
+  }
+}

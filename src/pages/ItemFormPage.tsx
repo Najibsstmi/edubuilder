@@ -136,9 +136,14 @@ const constructOptions = [
 export default function ItemFormPage() {
   const { profile } = useUser()
 
-  function hasRichTextContent(html: string) {
-    const text = html.replace(/<[^>]*>/g, " ").replace(/&nbsp;/g, " ").trim()
-    return text.length > 0
+  function isRichContentEmpty(html: string) {
+    const stripped = html
+      .replace(/<p><\/p>/g, "")
+      .replace(/<[^>]+>/g, "")
+      .replace(/&nbsp;/g, "")
+      .trim()
+
+    return stripped.length === 0 && !html.includes("<img")
   }
 
   const [saving, setSaving] = useState(false)
@@ -225,18 +230,18 @@ export default function ItemFormPage() {
       return
     }
 
-    if (!hasRichTextContent(stemText)) {
+    if (isRichContentEmpty(stemText)) {
       setMessage("Stem soalan wajib diisi.")
       return
     }
 
-    if (!hasRichTextContent(answerSchemeText)) {
+    if (isRichContentEmpty(answerSchemeText)) {
       setMessage("Panduan pemarkahan wajib diisi.")
       return
     }
 
     if (isPaper1) {
-      const hasEmptyOption = options.some((opt) => !opt.text.trim())
+      const hasEmptyOption = options.some((opt) => isRichContentEmpty(opt.text))
       if (hasEmptyOption) {
         setMessage("Semua pilihan jawapan A hingga D mesti diisi.")
         return
@@ -514,19 +519,23 @@ export default function ItemFormPage() {
                   <div className="options-block">
                     <div className="section-mini-header">
                       <h3>Pilihan Jawapan</h3>
-                      <p>Pilih satu jawapan betul bagi item objektif.</p>
+                      <p>Pilih satu jawapan betul bagi item objektif. Setiap pilihan boleh mengandungi teks, gambar atau jadual.</p>
                     </div>
 
-                    <div className="options-grid">
+                    <div className="options-grid options-grid-full">
                       {options.map((option, index) => (
                         <div
                           key={option.label}
-                          className={`option-card ${
+                          className={`option-card option-card-rich ${
                             answerFinal === option.label ? "selected" : ""
                           }`}
                         >
                           <div className="option-top">
-                            <span className="option-label">{option.label}</span>
+                            <div className="option-left">
+                              <span className="option-label">{option.label}</span>
+                              <span className="option-title">Pilihan {option.label}</span>
+                            </div>
+
                             <label className="option-correct">
                               <input
                                 type="radio"
@@ -538,14 +547,13 @@ export default function ItemFormPage() {
                             </label>
                           </div>
 
-                          <textarea
-                            value={option.text}
-                            onChange={(e) =>
-                              handleOptionChange(index, e.target.value)
-                            }
-                            className="input option-textarea"
-                            placeholder={`Isi pilihan ${option.label}`}
-                          />
+                          <Suspense fallback={<div className="input">Memuat editor...</div>}>
+                            <RichEditor
+                              value={option.text}
+                              onChange={(value) => handleOptionChange(index, value)}
+                              placeholder={`Isi kandungan pilihan ${option.label} di sini...`}
+                            />
+                          </Suspense>
                         </div>
                       ))}
                     </div>
@@ -786,7 +794,7 @@ export default function ItemFormPage() {
             <Card title="Pratonton Kandungan" subtitle="Semakan cepat sebelum simpan.">
               <div className="mini-preview">
                 <div className="mini-preview-stem">
-                  {hasRichTextContent(stemText) ? (
+                  {!isRichContentEmpty(stemText) ? (
                     <div dangerouslySetInnerHTML={{ __html: stemText }} />
                   ) : (
                     "Stem soalan akan dipaparkan di sini."
@@ -796,11 +804,20 @@ export default function ItemFormPage() {
                 {isPaper1 && (
                   <div className="mini-options">
                     {options.map((opt) => (
-                      <div key={opt.label} className="mini-option">
-                        <strong>{opt.label}.</strong> {opt.text || "..."}
-                        {answerFinal === opt.label && (
-                          <span className="mini-correct">✓ Betul</span>
-                        )}
+                      <div key={opt.label} className="mini-option rich-preview-option">
+                        <div className="mini-option-head">
+                          <strong>{opt.label}.</strong>
+                          {answerFinal === opt.label && (
+                            <span className="mini-correct">✓ Betul</span>
+                          )}
+                        </div>
+
+                        <div
+                          className="mini-option-body"
+                          dangerouslySetInnerHTML={{
+                            __html: opt.text || "<p>...</p>",
+                          }}
+                        />
                       </div>
                     ))}
                   </div>

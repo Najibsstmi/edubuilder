@@ -29,6 +29,24 @@ export interface Profile {
   approved_at?: string | null;
 }
 
+/** Subset of Item fields returned by the admin bank query */
+export interface ItemSummary {
+  id: string;
+  item_code: string;
+  tingkatan: 4 | 5;
+  paper: 'paper_1' | 'paper_2';
+  section: 'A' | 'B' | 'C' | null;
+  question_no_reference: string | null;
+  item_type: 'mcq' | 'structured' | 'limited_response' | 'open_response';
+  main_construct: string | null;
+  construct_code: string | null;
+  difficulty_level: 'rendah' | 'sederhana' | 'tinggi';
+  marks: number;
+  status: 'draft' | 'pending_review' | 'approved' | 'rejected' | 'published';
+  stem_text: string;
+  created_at: string;
+}
+
 export interface Item {
   id: string;
   item_code: string;

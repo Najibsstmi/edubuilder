@@ -12,6 +12,7 @@ import MasterAdminDashboard from './pages/MasterAdminDashboard';
 import { AdminItemCreatePage } from './pages/AdminItemCreatePage';
 import ItemFormPage from './pages/ItemFormPage';
 import { BuildPaperPage } from './pages/BuildPaperPage';
+import BankSoalanAdmin from './pages/BankSoalanAdmin';
 
 export default function App() {
   const { loading } = useAuth();
@@ -52,6 +53,14 @@ export default function App() {
           }
         />
         <Route path="build" element={<BuildPaperPage />} />
+        <Route
+          path="bank-soalan-admin"
+          element={
+            <ProtectedAdmin>
+              <BankSoalanAdmin />
+            </ProtectedAdmin>
+          }
+        />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

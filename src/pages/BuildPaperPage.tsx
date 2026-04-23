@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
-import type { Item } from '../types';
+import type { Item, ItemSummary } from '../types';
 
 export function BuildPaperPage() {
   const { profile, user } = useAuth();
@@ -10,14 +10,36 @@ export function BuildPaperPage() {
   const [tingkatan, setTingkatan] = useState<4 | 5>(4);
   const [construct, setConstruct] = useState('');
   const [difficulty, setDifficulty] = useState('');
-  const [items, setItems] = useState<Item[]>([]);
+  const [items, setItems] = useState<ItemSummary[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [title, setTitle] = useState('Set Latihan Sains');
   const [message, setMessage] = useState('');
 
   useEffect(() => {
     const loadItems = async () => {
-      let query = supabase.from('items').select('*').eq('status', 'published').eq('tingkatan', tingkatan).eq('paper', paper).order('created_at', { ascending: false }).limit(50);
+      let query = supabase
+        .from('items')
+        .select(`
+          id,
+          item_code,
+          tingkatan,
+          paper,
+          section,
+          question_no_reference,
+          item_type,
+          main_construct,
+          construct_code,
+          difficulty_level,
+          marks,
+          status,
+          stem_text,
+          created_at
+        `)
+        .eq('status', 'published')
+        .eq('tingkatan', tingkatan)
+        .eq('paper', paper)
+        .order('created_at', { ascending: false })
+        .limit(50);
       if (section) query = query.eq('section', section);
       if (construct) query = query.eq('main_construct', construct);
       if (difficulty) query = query.eq('difficulty_level', difficulty);
@@ -26,7 +48,7 @@ export function BuildPaperPage() {
         setMessage(error.message);
         return;
       }
-      setItems((data || []) as Item[]);
+      setItems((data || []) as ItemSummary[]);
     };
     void loadItems();
   }, [paper, section, tingkatan, construct, difficulty]);
