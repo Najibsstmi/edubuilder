@@ -22,85 +22,6 @@ const initialOptions: McqOption[] = [
   { label: "D", text: "" },
 ]
 
-const temaOptions = {
-  4: [
-    {
-      tema: "Penyenggaraan dan Kesinambungan Hidup",
-      bidang: [
-        {
-          code: "1.0",
-          name: "Langkah Keselamatan dalam Makmal",
-          standardKandungan: [
-            {
-              code: "1.1",
-              name: "Peralatan perlindungan diri",
-              standardPembelajaran: [
-                {
-                  code: "1.1.1",
-                  name: "Menyatakan jenis dan fungsi PPE",
-                },
-              ],
-            },
-          ],
-        },
-      ],
-    },
-    {
-      tema: "Penerokaan Unsur dalam Alam",
-      bidang: [
-        {
-          code: "8.0",
-          name: "Unsur dan Bahan",
-          standardKandungan: [
-            {
-              code: "8.1",
-              name: "Asas Jirim",
-              standardPembelajaran: [
-                {
-                  code: "8.1.1",
-                  name: "Menyatakan maksud atom dan molekul",
-                },
-                {
-                  code: "8.1.2",
-                  name: "Membandingkan unsur dan sebatian",
-                },
-              ],
-            },
-          ],
-        },
-      ],
-    },
-  ],
-
-  5: [
-    {
-      tema: "Penyenggaraan dan Kesinambungan Hidup",
-      bidang: [
-        {
-          code: "1.0",
-          name: "Mikroorganisma",
-          standardKandungan: [
-            {
-              code: "1.1",
-              name: "Dunia Mikroorganisma",
-              standardPembelajaran: [
-                {
-                  code: "1.1.1",
-                  name: "Mengelaskan mikroorganisma",
-                },
-                {
-                  code: "1.1.2",
-                  name: "Menerangkan faktor pertumbuhan mikroorganisma",
-                },
-              ],
-            },
-          ],
-        },
-      ],
-    },
-  ],
-} as const
-
 const constructCodeMap: Record<string, string[]> = {
   mengingat: ["PS0101", "PS0102", "PS0103"],
   memahami: ["KS0101", "KS0102", "KS0103", "KS0104"],
@@ -158,10 +79,11 @@ export default function ItemFormPage() {
   const [paper, setPaper] = useState<PaperType>("paper_1")
   const [section, setSection] = useState<SectionType>("")
   const [questionNoReference, setQuestionNoReference] = useState("")
+  const [standards, setStandards] = useState<any[]>([])
   const [selectedTema, setSelectedTema] = useState("")
-  const [selectedBidang, setSelectedBidang] = useState("")
-  const [standardKandungan, setStandardKandungan] = useState("")
-  const [standardPembelajaran, setStandardPembelajaran] = useState("")
+  const [selectedBidangCode, setSelectedBidangCode] = useState("")
+  const [selectedSKCode, setSelectedSKCode] = useState("")
+  const [selectedSPCode, setSelectedSPCode] = useState("")
   const [mainConstruct, setMainConstruct] = useState("")
   const [constructCode, setConstructCode] = useState("")
   const [difficultyLevel, setDifficultyLevel] = useState<DifficultyType>("sederhana")
@@ -190,27 +112,39 @@ export default function ItemFormPage() {
 
   const selectedPaperLabel = paper === "paper_1" ? "Kertas 1" : "Kertas 2"
 
-  const temaList = temaOptions[tingkatan]
+  const temaList = Array.from(
+    new Set(standards.map((s) => s.theme_name as string))
+  )
 
-  const selectedTemaObj =
-    temaList.find((t) => t.tema === selectedTema) || null
+  const bidangList = Array.from(
+    new Map(
+      standards
+        .filter((s) => s.theme_name === selectedTema)
+        .map((s) => [
+          s.bidang_code,
+          { code: s.bidang_code as string, name: s.bidang_name as string },
+        ])
+    ).values()
+  )
 
-  const bidangList = selectedTemaObj?.bidang || []
+  const skList = Array.from(
+    new Map(
+      standards
+        .filter((s) => s.bidang_code === selectedBidangCode)
+        .map((s) => [
+          s.standard_kandungan_code,
+          { code: s.standard_kandungan_code as string, name: s.standard_kandungan_name as string },
+        ])
+    ).values()
+  )
 
-  const selectedBidangObj =
-    bidangList.find(
-      (b) => `${b.code} - ${b.name}` === selectedBidang,
-    ) || null
+  const spList = standards.filter(
+    (s) => s.standard_kandungan_code === selectedSKCode
+  )
 
-  const standardKandunganList = selectedBidangObj?.standardKandungan || []
-
-  const selectedStandardKandunganObj =
-    standardKandunganList.find(
-      (s) => `${s.code} - ${s.name}` === standardKandungan,
-    ) || null
-
-  const standardPembelajaranList =
-    selectedStandardKandunganObj?.standardPembelajaran || []
+  const selectedBidangObj = bidangList.find((b) => b.code === selectedBidangCode) || null
+  const selectedSKObj = skList.find((s) => s.code === selectedSKCode) || null
+  const selectedSPObj = spList.find((s) => s.standard_pembelajaran_code === selectedSPCode) || null
 
   const constructCodeOptions = mainConstruct ? constructCodeMap[mainConstruct] || [] : []
 
@@ -219,6 +153,39 @@ export default function ItemFormPage() {
       prev.map((opt, i) => (i === index ? { ...opt, text: value } : opt)),
     )
   }
+
+  function generateItemCode() {
+    const paperCode = paper === "paper_1" ? "K1" : `K2${section || ""}`
+    const formCode = `T${tingkatan}`
+    const qCode =
+      paper === "paper_2" && section === "C" && questionNoReference
+        ? `Q${questionNoReference}`
+        : ""
+
+    const randomCode = Date.now().toString().slice(-6)
+
+    return ["SCI", paperCode, formCode, qCode, randomCode]
+      .filter(Boolean)
+      .join("-")
+  }
+
+  useEffect(() => {
+    async function fetchStandards() {
+      const { data, error } = await supabase
+        .from("academic_standards")
+        .select("*")
+        .eq("tingkatan", tingkatan)
+        .order("bidang_code", { ascending: true })
+        .order("standard_kandungan_code", { ascending: true })
+        .order("standard_pembelajaran_code", { ascending: true })
+
+      if (!error && data) {
+        setStandards(data)
+      }
+    }
+
+    void fetchStandards()
+  }, [tingkatan])
 
   useEffect(() => {
     if (editId) {
@@ -249,27 +216,9 @@ export default function ItemFormPage() {
       setSection((item.section || "") as SectionType)
       setQuestionNoReference(item.question_no_reference ? String(item.question_no_reference) : "")
       setSelectedTema(item.theme_name || "")
-
-      const temaObj = temaOptions[loadedTingkatan].find((t) => t.tema === (item.theme_name || ""))
-      const bidangObj = temaObj?.bidang.find((b) => b.code === item.bidang_learning_code)
-      if (bidangObj) {
-        setSelectedBidang(`${bidangObj.code} - ${bidangObj.name}`)
-      } else if (item.bidang_learning_code || item.bidang_learning_name) {
-        setSelectedBidang(
-          `${item.bidang_learning_code || ""} - ${item.bidang_learning_name || ""}`.trim(),
-        )
-      } else {
-        setSelectedBidang("")
-      }
-
-      const standardObj = bidangObj?.standardKandungan.find((s) => s.code === item.standard_kandungan)
-      if (standardObj) {
-        setStandardKandungan(`${standardObj.code} - ${standardObj.name}`)
-      } else {
-        setStandardKandungan(item.standard_kandungan || "")
-      }
-
-      setStandardPembelajaran(item.standard_pembelajaran || "")
+      setSelectedBidangCode(item.bidang_learning_code || "")
+      setSelectedSKCode(item.standard_kandungan || "")
+      setSelectedSPCode(item.standard_pembelajaran || "")
       setMainConstruct(item.main_construct || "")
       setConstructCode(item.construct_code || "")
       setDifficultyLevel((item.difficulty_level || "sederhana") as DifficultyType)
@@ -327,18 +276,13 @@ export default function ItemFormPage() {
       return
     }
 
-    if (!itemCode.trim()) {
-      setMessage("Kod item wajib diisi.")
-      return
-    }
-
     if (isRichContentEmpty(stemText)) {
       setMessage("Stem soalan wajib diisi.")
       return
     }
 
-    if (isRichContentEmpty(answerSchemeText)) {
-      setMessage("Panduan pemarkahan wajib diisi.")
+    if (!isPaper1 && isRichContentEmpty(answerSchemeText)) {
+      setMessage("Panduan pemarkahan wajib diisi untuk Kertas 2.")
       return
     }
 
@@ -359,11 +303,28 @@ export default function ItemFormPage() {
       return
     }
 
+    if (profile?.role !== "master_admin") {
+      if (status === "approved" || status === "published" || status === "archived") {
+        setMessage("Hanya master admin boleh approve, publish atau archive item.")
+        return
+      }
+    }
+
     setSaving(true)
 
     try {
+      const statusAuditFields =
+        profile?.role === "master_admin"
+          ? {
+              approved_by: status === "approved" ? profile.id : null,
+              approved_at: status === "approved" ? new Date().toISOString() : null,
+              published_by: status === "published" ? profile.id : null,
+              published_at: status === "published" ? new Date().toISOString() : null,
+            }
+          : {}
+
       const payload = {
-        item_code: itemCode.trim(),
+        item_code: itemCode.trim() || generateItemCode(),
         created_by: profile.id,
         updated_by: profile.id,
         tingkatan,
@@ -374,8 +335,8 @@ export default function ItemFormPage() {
         theme_name: selectedTema || null,
         bidang_learning_code: selectedBidangObj?.code || null,
         bidang_learning_name: selectedBidangObj?.name || null,
-        standard_kandungan: selectedStandardKandunganObj?.code || null,
-        standard_pembelajaran: standardPembelajaran || null,
+        standard_kandungan: selectedSKObj?.code || null,
+        standard_pembelajaran: selectedSPObj?.standard_pembelajaran_code || null,
         main_construct: mainConstruct || null,
         construct_code: constructCode || null,
         difficulty_level: difficultyLevel,
@@ -383,7 +344,9 @@ export default function ItemFormPage() {
         stimulus_type: stimulusType || null,
         stem_text: stemText,
         question_instruction: questionInstruction || null,
-        answer_scheme_text: answerSchemeText,
+        answer_scheme_text: isPaper1
+          ? `Jawapan: ${answerFinal}`
+          : answerSchemeText,
         answer_final: answerFinal || null,
         explanation_text: explanationText || null,
         source_type: sourceType || null,
@@ -391,6 +354,7 @@ export default function ItemFormPage() {
         source_year: sourceYear ? Number(sourceYear) : null,
         source_school: sourceSchool || null,
         status,
+        ...statusAuditFields,
       }
 
       let savedItemId = editId || ""
@@ -454,9 +418,9 @@ export default function ItemFormPage() {
     setItemCode("")
     setQuestionNoReference("")
     setSelectedTema("")
-    setSelectedBidang("")
-    setStandardKandungan("")
-    setStandardPembelajaran("")
+    setSelectedBidangCode("")
+    setSelectedSKCode("")
+    setSelectedSPCode("")
     setMainConstruct("")
     setConstructCode("")
     setDifficultyLevel("sederhana")
@@ -544,12 +508,12 @@ export default function ItemFormPage() {
               subtitle="Maklumat asas bagi soalan ini."
             >
               <div className="form-grid form-grid-4">
-                <Field label="Kod Item">
+                <Field label="Kod Item (auto jika kosong)">
                   <input
                     value={itemCode}
                     onChange={(e) => setItemCode(e.target.value)}
                     className="input"
-                    placeholder="Contoh: K1-T4-0001"
+                    placeholder="Auto dijana oleh sistem"
                   />
                 </Field>
 
@@ -608,8 +572,14 @@ export default function ItemFormPage() {
                   >
                     <option value="draft">draft</option>
                     <option value="pending_review">pending_review</option>
-                    <option value="approved">approved</option>
-                    <option value="published">published</option>
+
+                    {profile?.role === "master_admin" && (
+                      <>
+                        <option value="approved">approved</option>
+                        <option value="published">published</option>
+                        <option value="archived">archived</option>
+                      </>
+                    )}
                   </select>
                 </Field>
 
@@ -722,24 +692,24 @@ export default function ItemFormPage() {
 
             <Card
               title="Metadata Akademik"
-              subtitle="Tagging akademik untuk carian dan pembinaan set."
+              subtitle="Pilih standard DSKP. Maklumat kod akan diisi secara automatik."
             >
-              <div className="form-grid form-grid-2">
+              <div className="metadata-clean-grid">
                 <Field label="Tema">
                   <select
                     value={selectedTema}
                     onChange={(e) => {
                       setSelectedTema(e.target.value)
-                      setSelectedBidang("")
-                      setStandardKandungan("")
-                      setStandardPembelajaran("")
+                      setSelectedBidangCode("")
+                      setSelectedSKCode("")
+                      setSelectedSPCode("")
                     }}
                     className="input"
                   >
                     <option value="">Pilih tema</option>
-                    {temaList.map((t) => (
-                      <option key={t.tema} value={t.tema}>
-                        {t.tema}
+                    {temaList.map((tema) => (
+                      <option key={tema} value={tema}>
+                        {tema}
                       </option>
                     ))}
                   </select>
@@ -747,60 +717,57 @@ export default function ItemFormPage() {
 
                 <Field label="Bidang Pembelajaran">
                   <select
-                    value={selectedBidang}
+                    value={selectedBidangCode}
                     onChange={(e) => {
-                      setSelectedBidang(e.target.value)
-                      setStandardKandungan("")
-                      setStandardPembelajaran("")
+                      setSelectedBidangCode(e.target.value)
+                      setSelectedSKCode("")
+                      setSelectedSPCode("")
                     }}
                     className="input"
                     disabled={!selectedTema}
                   >
-                    <option value="">Pilih bidang</option>
-                    {bidangList.map((b) => {
-                      const value = `${b.code} - ${b.name}`
-                      return (
-                        <option key={value} value={value}>
-                          {value}
-                        </option>
-                      )
-                    })}
+                    <option value="">Pilih bidang pembelajaran</option>
+                    {bidangList.map((b) => (
+                      <option key={b.code} value={b.code}>
+                        {b.code} - {b.name}
+                      </option>
+                    ))}
                   </select>
                 </Field>
 
                 <Field label="Standard Kandungan">
                   <select
-                    value={standardKandungan}
+                    value={selectedSKCode}
                     onChange={(e) => {
-                      setStandardKandungan(e.target.value)
-                      setStandardPembelajaran("")
+                      setSelectedSKCode(e.target.value)
+                      setSelectedSPCode("")
                     }}
                     className="input"
-                    disabled={!selectedBidang}
+                    disabled={!selectedBidangCode}
                   >
                     <option value="">Pilih standard kandungan</option>
-                    {standardKandunganList.map((s) => {
-                      const value = `${s.code} - ${s.name}`
-                      return (
-                        <option key={value} value={value}>
-                          {value}
-                        </option>
-                      )
-                    })}
+                    {skList.map((sk) => (
+                      <option key={sk.code} value={sk.code}>
+                        {sk.code} - {sk.name}
+                      </option>
+                    ))}
                   </select>
                 </Field>
 
                 <Field label="Standard Pembelajaran">
                   <select
-                    value={standardPembelajaran}
-                    onChange={(e) => setStandardPembelajaran(e.target.value)}
+                    value={selectedSPCode}
+                    onChange={(e) => setSelectedSPCode(e.target.value)}
                     className="input"
-                    disabled={!standardKandungan}
+                    disabled={!selectedSKCode}
                   >
                     <option value="">Pilih standard pembelajaran</option>
-                    {standardPembelajaranList.map((sp) => (
-                      <option key={sp.code} value={sp.code}>
-                        {sp.code} - {sp.name}
+                    {spList.map((sp) => (
+                      <option
+                        key={sp.standard_pembelajaran_code}
+                        value={sp.standard_pembelajaran_code}
+                      >
+                        {sp.standard_pembelajaran_code} - {sp.standard_pembelajaran_name}
                       </option>
                     ))}
                   </select>
@@ -851,6 +818,37 @@ export default function ItemFormPage() {
                     <option value="tinggi">tinggi</option>
                   </select>
                 </Field>
+              </div>
+
+              <div className="metadata-summary">
+                <div>
+                  <span>Tema</span>
+                  <strong>{selectedTema || "-"}</strong>
+                </div>
+                <div>
+                  <span>Bidang</span>
+                  <strong>
+                    {selectedBidangObj
+                      ? `${selectedBidangObj.code} - ${selectedBidangObj.name}`
+                      : "-"}
+                  </strong>
+                </div>
+                <div>
+                  <span>SK</span>
+                  <strong>
+                    {selectedSKObj
+                      ? `${selectedSKObj.code} - ${selectedSKObj.name}`
+                      : "-"}
+                  </strong>
+                </div>
+                <div>
+                  <span>SP</span>
+                  <strong>
+                    {selectedSPObj
+                      ? `${selectedSPObj.standard_pembelajaran_code} - ${selectedSPObj.standard_pembelajaran_name}`
+                      : "-"}
+                  </strong>
+                </div>
               </div>
             </Card>
 
@@ -917,11 +915,11 @@ export default function ItemFormPage() {
                 />
                 <PreviewRow
                   label="Std. Kandungan"
-                  value={selectedStandardKandunganObj?.code || "-"}
+                  value={selectedSKObj ? `${selectedSKObj.code} - ${selectedSKObj.name}` : "-"}
                 />
                 <PreviewRow
                   label="Std. Pembelajaran"
-                  value={standardPembelajaran || "-"}
+                  value={selectedSPCode || "-"}
                 />
                 <PreviewRow label="Konstruk" value={mainConstruct || "-"} />
                 <PreviewRow label="Kod Konstruk" value={constructCode || "-"} />
