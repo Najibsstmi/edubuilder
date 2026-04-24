@@ -22,39 +22,6 @@ const initialOptions: McqOption[] = [
   { label: "D", text: "" },
 ]
 
-const constructCodeMap: Record<string, string[]> = {
-  mengingat: ["PS0101", "PS0102", "PS0103"],
-  memahami: ["KS0101", "KS0102", "KS0103", "KS0104"],
-  mengaplikasi: ["KS0201", "KS0202"],
-  menganalisis: ["KS0301", "KS0302"],
-  menilai: ["KS0401"],
-  mencipta: ["KS0501", "KS0502"],
-  kemahiran_proses_sains: [
-    "SS0101",
-    "SS0102",
-    "SS0103",
-    "SS0104",
-    "SS0105",
-    "SS0106",
-    "SS0107",
-    "SS0108",
-    "SS0109",
-    "SS0110",
-    "SS0111",
-    "SS0112",
-  ],
-}
-
-const constructOptions = [
-  "mengingat",
-  "memahami",
-  "mengaplikasi",
-  "menganalisis",
-  "menilai",
-  "mencipta",
-  "kemahiran_proses_sains",
-]
-
 export default function ItemFormPage() {
   const { profile } = useUser()
   const [searchParams] = useSearchParams()
@@ -84,6 +51,7 @@ export default function ItemFormPage() {
   const [selectedBidangCode, setSelectedBidangCode] = useState("")
   const [selectedSKCode, setSelectedSKCode] = useState("")
   const [selectedSPCode, setSelectedSPCode] = useState("")
+  const [constructs, setConstructs] = useState<any[]>([])
   const [mainConstruct, setMainConstruct] = useState("")
   const [constructCode, setConstructCode] = useState("")
   const [difficultyLevel, setDifficultyLevel] = useState<DifficultyType>("sederhana")
@@ -146,7 +114,17 @@ export default function ItemFormPage() {
   const selectedSKObj = skList.find((s) => s.code === selectedSKCode) || null
   const selectedSPObj = spList.find((s) => s.standard_pembelajaran_code === selectedSPCode) || null
 
-  const constructCodeOptions = mainConstruct ? constructCodeMap[mainConstruct] || [] : []
+  const constructGroupList = Array.from(
+    new Set(constructs.map((c) => c.construct_group as string))
+  )
+
+  const constructCodeList = constructs.filter(
+    (c) => c.construct_group === mainConstruct
+  )
+
+  const selectedConstructObj = constructs.find(
+    (c) => c.construct_code === constructCode
+  ) || null
 
   function handleOptionChange(index: number, value: string) {
     setOptions((prev) =>
@@ -157,17 +135,25 @@ export default function ItemFormPage() {
   function generateItemCode() {
     const paperCode = paper === "paper_1" ? "K1" : `K2${section || ""}`
     const formCode = `T${tingkatan}`
-    const qCode =
-      paper === "paper_2" && section === "C" && questionNoReference
-        ? `Q${questionNoReference}`
-        : ""
+    const randomCode = Math.random().toString(36).substring(2, 8).toUpperCase()
 
-    const randomCode = Date.now().toString().slice(-6)
-
-    return ["SCI", paperCode, formCode, qCode, randomCode]
-      .filter(Boolean)
-      .join("-")
+    return ["SCI", paperCode, formCode, randomCode].filter(Boolean).join("-")
   }
+
+  useEffect(() => {
+    async function fetchConstructs() {
+      const { data, error } = await supabase
+        .from("constructs")
+        .select("*")
+        .order("construct_code", { ascending: true })
+
+      if (!error && data) {
+        setConstructs(data)
+      }
+    }
+
+    void fetchConstructs()
+  }, [])
 
   useEffect(() => {
     async function fetchStandards() {
@@ -281,25 +267,39 @@ export default function ItemFormPage() {
       return
     }
 
-    if (!isPaper1 && isRichContentEmpty(answerSchemeText)) {
-      setMessage("Panduan pemarkahan wajib diisi untuk Kertas 2.")
+    if (isPaper1) {
+      const hasEmptyOption = options.some((opt) => isRichContentEmpty(opt.text))
+
+      if (hasEmptyOption) {
+        setMessage("Semua pilihan jawapan A, B, C dan D wajib diisi.")
+        return
+      }
+
+      if (!answerFinal) {
+        setMessage("Sila pilih jawapan betul untuk Kertas 1.")
+        return
+      }
+    }
+
+    if (!isPaper1) {
+      if (!section) {
+        setMessage("Bahagian wajib dipilih untuk Kertas 2.")
+        return
+      }
+
+      if (isRichContentEmpty(answerSchemeText)) {
+        setMessage("Panduan pemarkahan wajib diisi untuk Kertas 2.")
+        return
+      }
+    }
+
+    if (!selectedTema || !selectedBidangCode || !selectedSKCode || !selectedSPCode) {
+      setMessage("Metadata akademik DSKP wajib dilengkapkan.")
       return
     }
 
-    if (isPaper1) {
-      const hasEmptyOption = options.some((opt) => isRichContentEmpty(opt.text))
-      if (hasEmptyOption) {
-        setMessage("Semua pilihan jawapan A hingga D mesti diisi.")
-        return
-      }
-      if (!answerFinal.trim()) {
-        setMessage("Sila tandakan jawapan betul untuk Kertas 1.")
-        return
-      }
-    }
-
-    if (!isPaper1 && !section) {
-      setMessage("Sila pilih bahagian untuk Kertas 2.")
+    if (!mainConstruct || !constructCode) {
+      setMessage("Konstruk dan kod konstruk wajib dipilih.")
       return
     }
 
@@ -323,36 +323,47 @@ export default function ItemFormPage() {
             }
           : {}
 
+      const finalItemCode = itemCode.trim() || generateItemCode()
+
+      const finalAnswerSchemeText = isPaper1
+        ? `Jawapan: ${answerFinal}`
+        : answerSchemeText
+
       const payload = {
-        item_code: itemCode.trim() || generateItemCode(),
-        created_by: profile.id,
+        item_code: finalItemCode,
         updated_by: profile.id,
+
         tingkatan,
-        paper: paper === "paper_1" ? 1 : 2,
-        section: paper === "paper_2" ? section || null : null,
-        question_no_reference: questionNoReference ? Number(questionNoReference) : null,
-        item_type: itemType,
+        paper: isPaper1 ? 1 : 2,
+        section: isPaper1 ? null : section || null,
+        question_no_reference:
+          !isPaper1 && questionNoReference ? Number(questionNoReference) : null,
+
+        item_type: isPaper1 ? "mcq" : itemType,
+        marks: isPaper1 ? 1 : marks,
+
         theme_name: selectedTema || null,
         bidang_learning_code: selectedBidangObj?.code || null,
         bidang_learning_name: selectedBidangObj?.name || null,
         standard_kandungan: selectedSKObj?.code || null,
         standard_pembelajaran: selectedSPObj?.standard_pembelajaran_code || null,
+
         main_construct: mainConstruct || null,
         construct_code: constructCode || null,
         difficulty_level: difficultyLevel,
-        marks,
+
         stimulus_type: stimulusType || null,
-        stem_text: stemText,
         question_instruction: questionInstruction || null,
-        answer_scheme_text: isPaper1
-          ? `Jawapan: ${answerFinal}`
-          : answerSchemeText,
-        answer_final: answerFinal || null,
+        stem_text: stemText,
+        answer_scheme_text: finalAnswerSchemeText,
+        answer_final: isPaper1 ? answerFinal : answerFinal || null,
         explanation_text: explanationText || null,
+
         source_type: sourceType || null,
         source_reference: sourceReference || null,
         source_year: sourceYear ? Number(sourceYear) : null,
         source_school: sourceSchool || null,
+
         status,
         ...statusAuditFields,
       }
@@ -369,7 +380,10 @@ export default function ItemFormPage() {
       } else {
         const { data: insertedItem, error: itemError } = await supabase
           .from("items")
-          .insert(payload)
+          .insert({
+            ...payload,
+            created_by: profile.id,
+          })
           .select("id")
           .single()
 
@@ -391,7 +405,7 @@ export default function ItemFormPage() {
           item_id: savedItemId,
           option_label: opt.label,
           option_text: opt.text,
-          is_correct: opt.label === answerFinal.trim().toUpperCase(),
+          is_correct: opt.label === answerFinal,
           display_order: index + 1,
         }))
 
@@ -783,9 +797,9 @@ export default function ItemFormPage() {
                     className="input"
                   >
                     <option value="">Pilih konstruk</option>
-                    {constructOptions.map((opt) => (
-                      <option key={opt} value={opt}>
-                        {opt}
+                    {constructGroupList.map((group) => (
+                      <option key={group} value={group}>
+                        {group}
                       </option>
                     ))}
                   </select>
@@ -799,9 +813,9 @@ export default function ItemFormPage() {
                     disabled={!mainConstruct}
                   >
                     <option value="">Pilih kod konstruk</option>
-                    {constructCodeOptions.map((code) => (
-                      <option key={code} value={code}>
-                        {code}
+                    {constructCodeList.map((c) => (
+                      <option key={c.construct_code} value={c.construct_code}>
+                        {c.construct_code} : {c.aspect_name}
                       </option>
                     ))}
                   </select>
@@ -846,6 +860,14 @@ export default function ItemFormPage() {
                   <strong>
                     {selectedSPObj
                       ? `${selectedSPObj.standard_pembelajaran_code} - ${selectedSPObj.standard_pembelajaran_name}`
+                      : "-"}
+                  </strong>
+                </div>
+                <div>
+                  <span>Konstruk</span>
+                  <strong>
+                    {selectedConstructObj
+                      ? `${selectedConstructObj.construct_code} : ${selectedConstructObj.aspect_name}`
                       : "-"}
                   </strong>
                 </div>
