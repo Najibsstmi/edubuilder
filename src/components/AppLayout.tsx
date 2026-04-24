@@ -16,6 +16,7 @@ export function AppLayout() {
         <nav className="nav-list">
           <NavLink to="/">Dashboard</NavLink>
           <NavLink to="/build">Bina Set Soalan</NavLink>
+          <NavLink to="/builder-set">Builder Set</NavLink>
           {(profile?.role === 'admin' || profile?.role === 'master_admin') && (
             <NavLink to="/masukkan-soalan">Masukkan Soalan</NavLink>
           )}

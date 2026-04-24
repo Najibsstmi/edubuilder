@@ -1,4 +1,5 @@
-import { FormEvent, Suspense, lazy, useMemo, useState } from "react"
+import { FormEvent, Suspense, lazy, useEffect, useMemo, useState } from "react"
+import { useSearchParams } from "react-router-dom"
 import { supabase } from "../lib/supabase"
 import { useUser } from "../context/UserContext"
 
@@ -135,6 +136,9 @@ const constructOptions = [
 
 export default function ItemFormPage() {
   const { profile } = useUser()
+  const [searchParams] = useSearchParams()
+  const editId = searchParams.get("id")
+  const [loadingItem, setLoadingItem] = useState(false)
 
   function isRichContentEmpty(html: string) {
     const stripped = html
@@ -216,6 +220,104 @@ export default function ItemFormPage() {
     )
   }
 
+  useEffect(() => {
+    if (editId) {
+      void loadItemForEdit(editId)
+    }
+  }, [editId])
+
+  async function loadItemForEdit(itemId: string) {
+    setLoadingItem(true)
+    setMessage("")
+
+    try {
+      const { data: item, error: itemError } = await supabase
+        .from("items")
+        .select("*")
+        .eq("id", itemId)
+        .single()
+
+      if (itemError) throw itemError
+
+      const loadedTingkatan = (item.tingkatan || 4) as 4 | 5
+      const loadedPaper: PaperType =
+        item.paper === 2 || item.paper === "paper_2" ? "paper_2" : "paper_1"
+
+      setItemCode(item.item_code || "")
+      setTingkatan(loadedTingkatan)
+      setPaper(loadedPaper)
+      setSection((item.section || "") as SectionType)
+      setQuestionNoReference(item.question_no_reference ? String(item.question_no_reference) : "")
+      setSelectedTema(item.theme_name || "")
+
+      const temaObj = temaOptions[loadedTingkatan].find((t) => t.tema === (item.theme_name || ""))
+      const bidangObj = temaObj?.bidang.find((b) => b.code === item.bidang_learning_code)
+      if (bidangObj) {
+        setSelectedBidang(`${bidangObj.code} - ${bidangObj.name}`)
+      } else if (item.bidang_learning_code || item.bidang_learning_name) {
+        setSelectedBidang(
+          `${item.bidang_learning_code || ""} - ${item.bidang_learning_name || ""}`.trim(),
+        )
+      } else {
+        setSelectedBidang("")
+      }
+
+      const standardObj = bidangObj?.standardKandungan.find((s) => s.code === item.standard_kandungan)
+      if (standardObj) {
+        setStandardKandungan(`${standardObj.code} - ${standardObj.name}`)
+      } else {
+        setStandardKandungan(item.standard_kandungan || "")
+      }
+
+      setStandardPembelajaran(item.standard_pembelajaran || "")
+      setMainConstruct(item.main_construct || "")
+      setConstructCode(item.construct_code || "")
+      setDifficultyLevel((item.difficulty_level || "sederhana") as DifficultyType)
+      setMarks(item.marks || 1)
+      setStimulusType(item.stimulus_type || "text")
+      setQuestionInstruction(item.question_instruction || "")
+      setStemText(item.stem_text || "")
+      setAnswerSchemeText(item.answer_scheme_text || "")
+      setAnswerFinal(item.answer_final || "")
+      setExplanationText(item.explanation_text || "")
+      setSourceType(item.source_type || "")
+      setSourceReference(item.source_reference || "")
+      setSourceYear(item.source_year ? String(item.source_year) : "")
+      setSourceSchool(item.source_school || "")
+      setStatus(item.status || "draft")
+
+      if (loadedPaper === "paper_1") {
+        const { data: optionData, error: optionError } = await supabase
+          .from("item_options")
+          .select("*")
+          .eq("item_id", itemId)
+          .order("display_order", { ascending: true })
+
+        if (optionError) throw optionError
+
+        if (optionData && optionData.length > 0) {
+          const preparedOptions: McqOption[] = ["A", "B", "C", "D"].map((label) => {
+            const found = optionData.find((o) => o.option_label === label)
+            return {
+              label: label as "A" | "B" | "C" | "D",
+              text: found?.option_text || "",
+            }
+          })
+          setOptions(preparedOptions)
+        } else {
+          setOptions(initialOptions)
+        }
+      } else {
+        setOptions(initialOptions)
+      }
+    } catch (error: any) {
+      console.error(error)
+      setMessage(error.message || "Gagal memuatkan item untuk edit.")
+    } finally {
+      setLoadingItem(false)
+    }
+  }
+
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
     setMessage("")
@@ -260,48 +362,69 @@ export default function ItemFormPage() {
     setSaving(true)
 
     try {
-      const { data: insertedItem, error: itemError } = await supabase
-        .from("items")
-        .insert({
-          item_code: itemCode.trim(),
-          created_by: profile.id,
-          updated_by: profile.id,
-          tingkatan,
-          paper,
-          section: paper === "paper_2" ? section || null : null,
-          question_no_reference: questionNoReference || null,
-          item_type: itemType,
-          theme_name: selectedTema || null,
-          bidang_learning_code: selectedBidangObj?.code || null,
-          bidang_learning_name: selectedBidangObj?.name || null,
-          standard_kandungan: selectedStandardKandunganObj?.code || null,
-          standard_pembelajaran: standardPembelajaran || null,
-          main_construct: mainConstruct || null,
-          construct_code: constructCode || null,
-          difficulty_level: difficultyLevel,
-          marks,
-          stimulus_type: stimulusType || null,
-          stem_text: stemText,
-          stem_html: stemText,
-          question_instruction: questionInstruction || null,
-          answer_scheme_text: answerSchemeText,
-          marking_scheme_html: answerSchemeText,
-          answer_final: answerFinal || null,
-          explanation_text: explanationText || null,
-          source_type: sourceType || null,
-          source_reference: sourceReference || null,
-          source_year: sourceYear ? Number(sourceYear) : null,
-          source_school: sourceSchool || null,
-          status,
-        })
-        .select("id")
-        .single()
+      const payload = {
+        item_code: itemCode.trim(),
+        created_by: profile.id,
+        updated_by: profile.id,
+        tingkatan,
+        paper: paper === "paper_1" ? 1 : 2,
+        section: paper === "paper_2" ? section || null : null,
+        question_no_reference: questionNoReference ? Number(questionNoReference) : null,
+        item_type: itemType,
+        theme_name: selectedTema || null,
+        bidang_learning_code: selectedBidangObj?.code || null,
+        bidang_learning_name: selectedBidangObj?.name || null,
+        standard_kandungan: selectedStandardKandunganObj?.code || null,
+        standard_pembelajaran: standardPembelajaran || null,
+        main_construct: mainConstruct || null,
+        construct_code: constructCode || null,
+        difficulty_level: difficultyLevel,
+        marks,
+        stimulus_type: stimulusType || null,
+        stem_text: stemText,
+        question_instruction: questionInstruction || null,
+        answer_scheme_text: answerSchemeText,
+        answer_final: answerFinal || null,
+        explanation_text: explanationText || null,
+        source_type: sourceType || null,
+        source_reference: sourceReference || null,
+        source_year: sourceYear ? Number(sourceYear) : null,
+        source_school: sourceSchool || null,
+        status,
+      }
 
-      if (itemError) throw itemError
+      let savedItemId = editId || ""
 
-      if (isPaper1 && insertedItem?.id) {
+      if (editId) {
+        const { error: updateError } = await supabase
+          .from("items")
+          .update(payload)
+          .eq("id", editId)
+
+        if (updateError) throw updateError
+      } else {
+        const { data: insertedItem, error: itemError } = await supabase
+          .from("items")
+          .insert(payload)
+          .select("id")
+          .single()
+
+        if (itemError) throw itemError
+        savedItemId = insertedItem.id
+      }
+
+      if (isPaper1 && savedItemId) {
+        if (editId) {
+          const { error: deleteOldOptionsError } = await supabase
+            .from("item_options")
+            .delete()
+            .eq("item_id", savedItemId)
+
+          if (deleteOldOptionsError) throw deleteOldOptionsError
+        }
+
         const optionRows = options.map((opt, index) => ({
-          item_id: insertedItem.id,
+          item_id: savedItemId,
           option_label: opt.label,
           option_text: opt.text,
           is_correct: opt.label === answerFinal.trim().toUpperCase(),
@@ -315,8 +438,10 @@ export default function ItemFormPage() {
         if (optionError) throw optionError
       }
 
-      setMessage("Soalan berjaya disimpan.")
-      resetForm()
+      setMessage(editId ? "Soalan berjaya dikemaskini." : "Soalan berjaya disimpan.")
+      if (!editId) {
+        resetForm()
+      }
     } catch (error: any) {
       console.error(error)
       setMessage(error.message || "Gagal simpan soalan.")
@@ -353,13 +478,27 @@ export default function ItemFormPage() {
     setTingkatan(4)
   }
 
+  if (loadingItem) {
+    return (
+      <div className="page-shell">
+        <div className="card-block">
+          <div className="empty-state">Memuatkan item untuk edit...</div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="page-shell">
       <div className="page-header">
         <div>
-          <h1 className="page-title">Masukkan Soalan</h1>
+          <h1 className="page-title">
+            {editId ? "Edit Soalan" : "Masukkan Soalan"}
+          </h1>
           <p className="page-subtitle">
-            Bina item baharu untuk bank soalan Sains KSSM Tingkatan 4 dan 5.
+            {editId
+              ? "Kemaskini item sedia ada dalam bank soalan Sains KSSM Tingkatan 4 dan 5."
+              : "Bina item baharu untuk bank soalan Sains KSSM Tingkatan 4 dan 5."}
           </p>
         </div>
 
@@ -918,3 +1057,4 @@ function Badge({
 }) {
   return <span className={`badge badge-${tone}`}>{children}</span>
 }
+

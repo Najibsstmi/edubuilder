@@ -13,6 +13,7 @@ import { AdminItemCreatePage } from './pages/AdminItemCreatePage';
 import ItemFormPage from './pages/ItemFormPage';
 import { BuildPaperPage } from './pages/BuildPaperPage';
 import BankSoalanAdmin from './pages/BankSoalanAdmin';
+import BuilderSetSoalan from './pages/BuilderSetSoalan';
 
 export default function App() {
   const { loading } = useAuth();
@@ -61,6 +62,7 @@ export default function App() {
             </ProtectedAdmin>
           }
         />
+        <Route path="builder-set" element={<BuilderSetSoalan />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
