@@ -8,7 +8,10 @@ export default function ProtectedAdmin({ children }: { children: React.ReactNode
 
   if (!profile) return <Navigate to="/login" />;
 
-  if (profile.role !== 'admin' && profile.role !== 'master_admin') {
+  if (
+    (profile.role !== 'admin' && profile.role !== 'master_admin') ||
+    profile.status !== 'active'
+  ) {
     return <Navigate to="/" />;
   }
 

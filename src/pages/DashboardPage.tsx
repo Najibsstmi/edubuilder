@@ -31,9 +31,9 @@ export function DashboardPage() {
       <div className="card">
         <h2>Akses pantas</h2>
         <div className="action-row">
-          <Link className="primary-btn inline-btn" to="/build">Bina set soalan</Link>
+          <Link className="primary-btn inline-btn" to="/builder-set">Bina set soalan</Link>
           {(profile?.role === 'admin' || profile?.role === 'master_admin') && (
-            <Link className="primary-btn inline-btn" to="/admin/items/new">Masukkan soalan</Link>
+            <Link className="primary-btn inline-btn" to="/masukkan-soalan">Masukkan soalan</Link>
           )}
           {profile?.role === 'master_admin' && (
             <Link className="primary-btn inline-btn" to="/master/users">Urus pengguna</Link>

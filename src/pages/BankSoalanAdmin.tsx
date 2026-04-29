@@ -1,15 +1,16 @@
 import { useEffect, useMemo, useState } from "react"
 import { Link } from "react-router-dom"
 import { supabase } from "../lib/supabase"
+import { useAuth } from "../contexts/AuthContext"
 
 type ItemRow = {
   id: string
   item_code: string
   tingkatan: 4 | 5
-  paper: 1 | 2
+  paper: "paper_1" | "paper_2"
   section: "A" | "B" | "C" | null
-  question_no_reference: number | null
-  item_type: "mcq" | "structured" | "limited_response" | "open_response" | "experiment"
+  question_no_reference: string | null
+  item_type: "mcq" | "structured" | "limited_response" | "open_response"
   theme_name: string | null
   bidang_learning_code: string | null
   bidang_learning_name: string | null
@@ -23,7 +24,7 @@ type ItemRow = {
   stem_text: string | null
   answer_scheme_text: string
   answer_final: string | null
-  status: "draft" | "pending_review" | "approved" | "published" | "archived"
+  status: "draft" | "pending_review" | "approved" | "rejected" | "published" | "archived"
   created_at: string
 }
 
@@ -48,12 +49,14 @@ const defaultFilters: FilterState = {
 }
 
 export default function BankSoalanAdmin() {
+  const { user } = useAuth()
   const [items, setItems] = useState<ItemRow[]>([])
   const [loading, setLoading] = useState(true)
   const [filters, setFilters] = useState<FilterState>(defaultFilters)
   const [previewItem, setPreviewItem] = useState<ItemRow | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [archivingId, setArchivingId] = useState<string | null>(null)
+  const [publishingId, setPublishingId] = useState<string | null>(null)
   const [message, setMessage] = useState("")
 
   useEffect(() => {
@@ -129,6 +132,42 @@ export default function BankSoalanAdmin() {
     setArchivingId(null)
   }
 
+  async function publishItem(id: string) {
+    setPublishingId(id)
+    setMessage("")
+
+    const now = new Date().toISOString()
+    const { error } = await supabase
+      .from("items")
+      .update({
+        status: "published",
+        approved_by: user?.id || null,
+        approved_at: now,
+        published_by: user?.id || null,
+        published_at: now,
+        updated_by: user?.id || null,
+        updated_at: now,
+      })
+      .eq("id", id)
+
+    if (error) {
+      console.error(error)
+      setMessage("Gagal publish item.")
+    } else {
+      setItems((prev) =>
+        prev.map((item) =>
+          item.id === id ? { ...item, status: "published" } : item,
+        ),
+      )
+      if (previewItem?.id === id) {
+        setPreviewItem({ ...previewItem, status: "published" })
+      }
+      setMessage("Item berjaya dipublish. Item ini kini boleh digunakan dalam Bina Set Soalan.")
+    }
+
+    setPublishingId(null)
+  }
+
   async function deleteItem(id: string) {
     const confirmed = window.confirm("Padam item ini? Tindakan ini tidak boleh dibatalkan.")
     if (!confirmed) return
@@ -185,8 +224,8 @@ export default function BankSoalanAdmin() {
 
   const stats = useMemo(() => {
     const total = items.length
-    const paper1 = items.filter((i) => i.paper === 1).length
-    const paper2 = items.filter((i) => i.paper === 2).length
+    const paper1 = items.filter((i) => i.paper === "paper_1").length
+    const paper2 = items.filter((i) => i.paper === "paper_2").length
     const published = items.filter((i) => i.status === "published").length
     return { total, paper1, paper2, published }
   }, [items])
@@ -262,8 +301,8 @@ export default function BankSoalanAdmin() {
               }
             >
               <option value="">Semua</option>
-              <option value="1">Kertas 1</option>
-              <option value="2">Kertas 2</option>
+              <option value="paper_1">Kertas 1</option>
+              <option value="paper_2">Kertas 2</option>
             </select>
           </Field>
 
@@ -326,6 +365,7 @@ export default function BankSoalanAdmin() {
               <option value="draft">draft</option>
               <option value="pending_review">pending_review</option>
               <option value="approved">approved</option>
+              <option value="rejected">rejected</option>
               <option value="published">published</option>
               <option value="archived">archived</option>
             </select>
@@ -372,7 +412,7 @@ export default function BankSoalanAdmin() {
                       <div className="bank-item-code">{item.item_code}</div>
                       <div className="bank-item-meta">
                         <Badge tone="blue">
-                          {item.paper === 1 ? "Kertas 1" : "Kertas 2"}
+                          {item.paper === "paper_1" ? "Kertas 1" : "Kertas 2"}
                         </Badge>
 
                         <Badge tone="purple">Tingkatan {item.tingkatan}</Badge>
@@ -428,6 +468,17 @@ export default function BankSoalanAdmin() {
                       Edit
                     </Link>
 
+                    {item.status !== "published" && item.status !== "archived" && (
+                      <button
+                        type="button"
+                        className="btn btn-primary btn-sm"
+                        onClick={() => publishItem(item.id)}
+                        disabled={publishingId === item.id}
+                      >
+                        {publishingId === item.id ? "Publishing..." : "Publish"}
+                      </button>
+                    )}
+
                     <button
                       type="button"
                       className="btn btn-light btn-sm"
@@ -469,7 +520,7 @@ export default function BankSoalanAdmin() {
                   <div className="bank-item-code">{previewItem.item_code}</div>
                   <div className="bank-item-meta">
                     <Badge tone="blue">
-                      {previewItem.paper === 1 ? "Kertas 1" : "Kertas 2"}
+                      {previewItem.paper === "paper_1" ? "Kertas 1" : "Kertas 2"}
                     </Badge>
                     <Badge tone="purple">Tingkatan {previewItem.tingkatan}</Badge>
                     {previewItem.section && (
@@ -552,7 +603,7 @@ export default function BankSoalanAdmin() {
                   />
                 </div>
 
-                {previewItem.paper === 1 && previewItem.answer_final && (
+                {previewItem.paper === "paper_1" && previewItem.answer_final && (
                   <div className="preview-answer-box">
                     Jawapan akhir: <strong>{previewItem.answer_final}</strong>
                   </div>
@@ -635,6 +686,6 @@ function statusTone(value: ItemRow["status"]): "green" | "yellow" | "purple" | "
   if (value === "published") return "green"
   if (value === "approved") return "purple"
   if (value === "pending_review") return "yellow"
-  if (value === "archived") return "red"
+  if (value === "archived" || value === "rejected") return "red"
   return "gray"
 }

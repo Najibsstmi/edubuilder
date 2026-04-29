@@ -6,7 +6,7 @@ export default function ProtectedMaster({ children }: { children: React.ReactNod
 
   if (!profile) return null;
 
-  if (profile.role !== 'master_admin') {
+  if (profile.role !== 'master_admin' || profile.status !== 'active') {
     return <Navigate to="/" replace />;
   }
 

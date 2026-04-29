@@ -161,7 +161,7 @@ export default function RichEditor({
           active={editor.isActive("bulletList")}
           onClick={() => editor.chain().focus().toggleBulletList().run()}
         >
-          • List
+          Bullet List
         </ToolbarButton>
 
         <ToolbarButton

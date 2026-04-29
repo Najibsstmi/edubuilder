@@ -9,9 +9,7 @@ import { SignupPage } from './pages/SignupPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { MasterAdminUsersPage } from './pages/MasterAdminUsersPage';
 import MasterAdminDashboard from './pages/MasterAdminDashboard';
-import { AdminItemCreatePage } from './pages/AdminItemCreatePage';
 import ItemFormPage from './pages/ItemFormPage';
-import { BuildPaperPage } from './pages/BuildPaperPage';
 import BankSoalanAdmin from './pages/BankSoalanAdmin';
 import BuilderSetSoalan from './pages/BuilderSetSoalan';
 
@@ -44,7 +42,7 @@ export default function App() {
           }
         />
         <Route path="master/users" element={<MasterAdminUsersPage />} />
-        <Route path="admin/items/new" element={<AdminItemCreatePage />} />
+        <Route path="admin/items/new" element={<Navigate to="/masukkan-soalan" replace />} />
         <Route
           path="masukkan-soalan"
           element={
@@ -53,7 +51,7 @@ export default function App() {
             </ProtectedAdmin>
           }
         />
-        <Route path="build" element={<BuildPaperPage />} />
+        <Route path="build" element={<Navigate to="/builder-set" replace />} />
         <Route
           path="bank-soalan-admin"
           element={

@@ -7,16 +7,19 @@ export function AppLayout() {
   return (
     <div className="app-shell">
       <aside className="sidebar">
-        <Link to="/" className="brand">EduBuilder</Link>
+        <Link to="/" className="brand">
+          EduBuilder
+        </Link>
         <div className="profile-box">
           <div className="profile-name">{profile?.full_name || 'Pengguna'}</div>
-          <div className="profile-meta">{profile?.role} · {profile?.account_type}</div>
+          <div className="profile-meta">
+            {profile?.role} / {profile?.account_type}
+          </div>
           <div className="profile-meta">Status: {profile?.status}</div>
         </div>
         <nav className="nav-list">
           <NavLink to="/">Dashboard</NavLink>
-          <NavLink to="/build">Bina Set Soalan</NavLink>
-          <NavLink to="/builder-set">Builder Set</NavLink>
+          <NavLink to="/builder-set">Bina Set Soalan</NavLink>
           {(profile?.role === 'admin' || profile?.role === 'master_admin') && (
             <NavLink to="/masukkan-soalan">Masukkan Soalan</NavLink>
           )}

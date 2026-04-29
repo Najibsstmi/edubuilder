@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
-import type { Item, ItemSummary } from '../types';
+import type { ItemSummary } from '../types';
 
 export function BuildPaperPage() {
   const { profile, user } = useAuth();
@@ -101,6 +101,11 @@ export function BuildPaperPage() {
     if (!user) return;
     setMessage('');
 
+    if (selectedIds.length === 0) {
+      setMessage('Pilih sekurang-kurangnya satu item sebelum simpan set.');
+      return;
+    }
+
     const { data: buildData, error: buildError } = await supabase
       .from('build_sets')
       .insert({
@@ -163,7 +168,7 @@ export function BuildPaperPage() {
           </label>
           <label>
             Kertas
-            <select value={paper} onChange={(e) => { setPaper(e.target.value as any); setSection(''); setSelectedIds([]); }}>
+            <select value={paper} onChange={(e) => { setPaper(e.target.value as 'paper_1' | 'paper_2'); setSection(''); setSelectedIds([]); }}>
               <option value="paper_1">Kertas 1</option>
               <option value="paper_2">Kertas 2</option>
             </select>

@@ -1,6 +1,6 @@
 export type AppRole = 'master_admin' | 'admin' | 'user';
 export type AccountType = 'free' | 'full';
-export type ProfileStatus = 'active' | 'pending' | 'approved' | 'suspended';
+export type ProfileStatus = 'active' | 'pending' | 'suspended';
 
 export interface School {
   id: string;
@@ -42,7 +42,7 @@ export interface ItemSummary {
   construct_code: string | null;
   difficulty_level: 'rendah' | 'sederhana' | 'tinggi';
   marks: number;
-  status: 'draft' | 'pending_review' | 'approved' | 'rejected' | 'published';
+  status: 'draft' | 'pending_review' | 'approved' | 'rejected' | 'published' | 'archived';
   stem_text: string;
   created_at: string;
 }
@@ -64,7 +64,7 @@ export interface Item {
   stem_text: string;
   answer_scheme_text: string;
   answer_final: string | null;
-  status: 'draft' | 'pending_review' | 'approved' | 'rejected' | 'published';
+  status: 'draft' | 'pending_review' | 'approved' | 'rejected' | 'published' | 'archived';
   source_type: string | null;
   source_reference: string | null;
   source_year: number | null;

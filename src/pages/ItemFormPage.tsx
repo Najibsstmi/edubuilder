@@ -22,6 +22,32 @@ const initialOptions: McqOption[] = [
   { label: "D", text: "" },
 ]
 
+const constructGroupOrder = [
+  "Pengetahuan (Mengingat)",
+  "Mengingat",
+  "Kefahaman (Memahami)",
+  "Memahami",
+  "Aplikasi (Mengaplikasi)",
+  "Mengaplikasi",
+  "Analisis (Menganalisis)",
+  "Menganalisis",
+  "Menilai",
+  "Mencipta",
+  "Kemahiran Proses Sains",
+  "Kemahiran Manipulatif",
+  "Sikap Saintifik dan Nilai Murni",
+]
+
+function sortConstructGroups(a: string, b: string) {
+  const aIndex = constructGroupOrder.indexOf(a)
+  const bIndex = constructGroupOrder.indexOf(b)
+
+  if (aIndex === -1 && bIndex === -1) return a.localeCompare(b)
+  if (aIndex === -1) return 1
+  if (bIndex === -1) return -1
+  return aIndex - bIndex
+}
+
 export default function ItemFormPage() {
   const { profile } = useUser()
   const [searchParams] = useSearchParams()
@@ -116,7 +142,7 @@ export default function ItemFormPage() {
 
   const constructGroupList = Array.from(
     new Set(constructs.map((c) => c.construct_group as string))
-  )
+  ).sort(sortConstructGroups)
 
   const constructCodeList = constructs.filter(
     (c) => c.construct_group === mainConstruct
@@ -193,8 +219,7 @@ export default function ItemFormPage() {
       if (itemError) throw itemError
 
       const loadedTingkatan = (item.tingkatan || 4) as 4 | 5
-      const loadedPaper: PaperType =
-        item.paper === 2 || item.paper === "paper_2" ? "paper_2" : "paper_1"
+      const loadedPaper: PaperType = item.paper === "paper_2" ? "paper_2" : "paper_1"
 
       setItemCode(item.item_code || "")
       setTingkatan(loadedTingkatan)
@@ -334,10 +359,10 @@ export default function ItemFormPage() {
         updated_by: profile.id,
 
         tingkatan,
-        paper: isPaper1 ? 1 : 2,
+        paper: isPaper1 ? "paper_1" : "paper_2",
         section: isPaper1 ? null : section || null,
         question_no_reference:
-          !isPaper1 && questionNoReference ? Number(questionNoReference) : null,
+          !isPaper1 && questionNoReference.trim() ? questionNoReference.trim() : null,
 
         item_type: isPaper1 ? "mcq" : itemType,
         marks: isPaper1 ? 1 : marks,
@@ -376,7 +401,10 @@ export default function ItemFormPage() {
           .update(payload)
           .eq("id", editId)
 
-        if (updateError) throw updateError
+        if (updateError) {
+          console.error("Item update error", { error: updateError, payload })
+          throw new Error(`Gagal simpan item: ${updateError.message}`)
+        }
       } else {
         const { data: insertedItem, error: itemError } = await supabase
           .from("items")
@@ -387,7 +415,10 @@ export default function ItemFormPage() {
           .select("id")
           .single()
 
-        if (itemError) throw itemError
+        if (itemError) {
+          console.error("Item insert error", { error: itemError, payload })
+          throw new Error(`Gagal simpan item: ${itemError.message}`)
+        }
         savedItemId = insertedItem.id
       }
 
@@ -398,7 +429,10 @@ export default function ItemFormPage() {
             .delete()
             .eq("item_id", savedItemId)
 
-          if (deleteOldOptionsError) throw deleteOldOptionsError
+          if (deleteOldOptionsError) {
+            console.error("Item option cleanup error", deleteOldOptionsError)
+            throw new Error(`Gagal kemas pilihan lama: ${deleteOldOptionsError.message}`)
+          }
         }
 
         const optionRows = options.map((opt, index) => ({
@@ -413,7 +447,10 @@ export default function ItemFormPage() {
           .from("item_options")
           .insert(optionRows)
 
-        if (optionError) throw optionError
+        if (optionError) {
+          console.error("Item options insert error", { error: optionError, optionRows })
+          throw new Error(`Gagal simpan pilihan jawapan: ${optionError.message}`)
+        }
       }
 
       setMessage(editId ? "Soalan berjaya dikemaskini." : "Soalan berjaya disimpan.")
@@ -644,6 +681,20 @@ export default function ItemFormPage() {
                       <h3>Pilihan Jawapan</h3>
                       <p>Pilih satu jawapan betul bagi item objektif. Setiap pilihan boleh mengandungi teks, gambar atau jadual.</p>
                     </div>
+
+                    <Field label="Jawapan Betul">
+                      <select
+                        value={answerFinal}
+                        onChange={(e) => setAnswerFinal(e.target.value)}
+                        className="input"
+                      >
+                        <option value="">Pilih jawapan betul</option>
+                        <option value="A">A</option>
+                        <option value="B">B</option>
+                        <option value="C">C</option>
+                        <option value="D">D</option>
+                      </select>
+                    </Field>
 
                     <div className="options-grid options-grid-full">
                       {options.map((option, index) => (
@@ -967,7 +1018,7 @@ export default function ItemFormPage() {
                         <div className="mini-option-head">
                           <strong>{opt.label}.</strong>
                           {answerFinal === opt.label && (
-                            <span className="mini-correct">✓ Betul</span>
+                            <span className="mini-correct">Betul</span>
                           )}
                         </div>
 

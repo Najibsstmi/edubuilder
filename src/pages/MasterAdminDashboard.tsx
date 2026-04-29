@@ -33,7 +33,7 @@ export default function MasterAdminDashboard() {
     const { error } = await supabase
       .from('profiles')
       .update({
-        status: 'approved',
+        status: 'active',
         approved_by: masterId,
         approved_at: new Date().toISOString(),
       })
@@ -131,7 +131,7 @@ export default function MasterAdminDashboard() {
                         onClick={() => approveUser(user.id, profile.id)}
                         className="bg-green-600 text-white px-2 py-1 rounded"
                       >
-                        Approve
+                        Aktifkan
                       </button>
 
                       <button
