@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react"
+import { Mark, mergeAttributes } from "@tiptap/core"
 import { EditorContent, useEditor } from "@tiptap/react"
 import StarterKit from "@tiptap/starter-kit"
 import Underline from "@tiptap/extension-underline"
@@ -10,6 +11,58 @@ import TableRow from "@tiptap/extension-table-row"
 import TableCell from "@tiptap/extension-table-cell"
 import TableHeader from "@tiptap/extension-table-header"
 import { supabase } from "../lib/supabase"
+
+const TextStyle = Mark.create({
+  name: "textStyle",
+
+  addAttributes() {
+    return {
+      fontSize: {
+        default: null,
+        parseHTML: (element) => element.style.fontSize || null,
+        renderHTML: (attributes) =>
+          attributes.fontSize ? { style: `font-size: ${attributes.fontSize}` } : {},
+      },
+      color: {
+        default: null,
+        parseHTML: (element) => element.style.color || null,
+        renderHTML: (attributes) =>
+          attributes.color ? { style: `color: ${attributes.color}` } : {},
+      },
+    }
+  },
+
+  parseHTML() {
+    return [{ tag: "span[style]" }]
+  },
+
+  renderHTML({ HTMLAttributes }) {
+    return ["span", mergeAttributes(HTMLAttributes), 0]
+  },
+})
+
+const AlignedImage = Image.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      alignment: {
+        default: "left",
+        parseHTML: (element) => element.getAttribute("data-align") || "left",
+        renderHTML: (attributes) => ({
+          "data-align": attributes.alignment || "left",
+        }),
+      },
+      width: {
+        default: "auto",
+        parseHTML: (element) => element.getAttribute("width") || element.style.width || "auto",
+        renderHTML: (attributes) =>
+          attributes.width && attributes.width !== "auto"
+            ? { width: attributes.width, style: `width: ${attributes.width};` }
+            : {},
+      },
+    }
+  },
+})
 
 type Props = {
   value: string
@@ -33,6 +86,7 @@ export default function RichEditor({
   const editor = useEditor({
     extensions: [
       StarterKit,
+      TextStyle,
       Underline,
       Placeholder.configure({
         placeholder,
@@ -40,7 +94,7 @@ export default function RichEditor({
       TextAlign.configure({
         types: ["heading", "paragraph"],
       }),
-      Image.configure({
+      AlignedImage.configure({
         inline: false,
         allowBase64: false,
       }),
@@ -129,6 +183,67 @@ export default function RichEditor({
     setShowTablePrompt(false)
   }
 
+  function insertAnswerTableTemplate() {
+    if (!editor) return
+
+    editor
+      .chain()
+      .focus()
+      .insertContent(`
+        <table>
+          <tbody>
+            <tr>
+              <th></th>
+              <th>Keadaan</th>
+              <th>Bantuan Kecemasan</th>
+            </tr>
+            <tr>
+              <td>A</td>
+              <td>Mangsa lemas</td>
+              <td>Resusitasi kardiopulmonari</td>
+            </tr>
+            <tr>
+              <td>B</td>
+              <td>Mangsa yang tercekik</td>
+              <td>Resusitasi kardiopulmonari</td>
+            </tr>
+            <tr>
+              <td>C</td>
+              <td>Mangsa panahan petir</td>
+              <td>Heimlich Manoeuvre</td>
+            </tr>
+            <tr>
+              <td>D</td>
+              <td>Mangsa serangan jantung</td>
+              <td>Heimlich Manoeuvre</td>
+            </tr>
+          </tbody>
+        </table>
+      `)
+      .run()
+  }
+
+  function applyTextStyle(attrs: { fontSize?: string | null; color?: string | null }) {
+    if (!editor) return
+
+    const { state, view } = editor
+    const markType = state.schema.marks.textStyle
+    if (!markType) return
+
+    const { from, to, empty } = state.selection
+    const mark = markType.create(attrs)
+    const tr = state.tr
+
+    if (empty) {
+      tr.setStoredMarks([mark])
+    } else {
+      tr.addMark(from, to, mark)
+    }
+
+    view.dispatch(tr)
+    view.focus()
+  }
+
   if (!editor) return null
 
   return (
@@ -136,6 +251,57 @@ export default function RichEditor({
       {label && <div className="re2-label">{label}</div>}
 
       <div className="re2-toolbar">
+        <select
+          className="re2-select"
+          defaultValue=""
+          onChange={(e) => {
+            const value = e.target.value
+            if (value === "p") editor.chain().focus().setParagraph().run()
+            if (value === "h2") editor.chain().focus().toggleHeading({ level: 2 }).run()
+            if (value === "h3") editor.chain().focus().toggleHeading({ level: 3 }).run()
+            e.target.value = ""
+          }}
+        >
+          <option value="">Style</option>
+          <option value="p">Normal</option>
+          <option value="h2">Heading 2</option>
+          <option value="h3">Heading 3</option>
+        </select>
+
+        <select
+          className="re2-select"
+          defaultValue=""
+          onChange={(e) => {
+            if (e.target.value) applyTextStyle({ fontSize: e.target.value })
+            e.target.value = ""
+          }}
+        >
+          <option value="">Size</option>
+          <option value="12px">12</option>
+          <option value="14px">14</option>
+          <option value="16px">16</option>
+          <option value="18px">18</option>
+          <option value="20px">20</option>
+          <option value="24px">24</option>
+        </select>
+
+        <select
+          className="re2-select"
+          defaultValue=""
+          onChange={(e) => {
+            if (e.target.value) applyTextStyle({ color: e.target.value })
+            e.target.value = ""
+          }}
+        >
+          <option value="">Color</option>
+          <option value="#0f172a">Hitam</option>
+          <option value="#dc2626">Merah</option>
+          <option value="#2563eb">Biru</option>
+          <option value="#15803d">Hijau</option>
+        </select>
+
+        <ToolbarDivider />
+
         <ToolbarButton
           active={editor.isActive("bold")}
           onClick={() => editor.chain().focus().toggleBold().run()}
@@ -202,6 +368,10 @@ export default function RichEditor({
           Table
         </ToolbarButton>
 
+        <ToolbarButton onClick={insertAnswerTableTemplate}>
+          Template A-D
+        </ToolbarButton>
+
         {isInTable && (
           <>
             <ToolbarButton onClick={() => editor.chain().focus().addRowAfter().run()}>
@@ -218,6 +388,54 @@ export default function RichEditor({
             </ToolbarButton>
             <ToolbarButton onClick={() => editor.chain().focus().deleteTable().run()}>
               Delete Table
+            </ToolbarButton>
+          </>
+        )}
+
+        {editor.isActive("image") && (
+          <>
+            <ToolbarDivider />
+            <ToolbarButton
+              active={editor.getAttributes("image").alignment === "left"}
+              onClick={() => editor.chain().focus().updateAttributes("image", { alignment: "left" }).run()}
+            >
+              Img Left
+            </ToolbarButton>
+            <ToolbarButton
+              active={editor.getAttributes("image").alignment === "center"}
+              onClick={() => editor.chain().focus().updateAttributes("image", { alignment: "center" }).run()}
+            >
+              Img Center
+            </ToolbarButton>
+            <ToolbarButton
+              active={editor.getAttributes("image").alignment === "right"}
+              onClick={() => editor.chain().focus().updateAttributes("image", { alignment: "right" }).run()}
+            >
+              Img Right
+            </ToolbarButton>
+            <ToolbarButton
+              active={editor.getAttributes("image").width === "20%"}
+              onClick={() => editor.chain().focus().updateAttributes("image", { width: "20%" }).run()}
+            >
+              Img S
+            </ToolbarButton>
+            <ToolbarButton
+              active={editor.getAttributes("image").width === "40%"}
+              onClick={() => editor.chain().focus().updateAttributes("image", { width: "40%" }).run()}
+            >
+              Img M
+            </ToolbarButton>
+            <ToolbarButton
+              active={editor.getAttributes("image").width === "65%"}
+              onClick={() => editor.chain().focus().updateAttributes("image", { width: "65%" }).run()}
+            >
+              Img L
+            </ToolbarButton>
+            <ToolbarButton
+              active={editor.getAttributes("image").width === "100%"}
+              onClick={() => editor.chain().focus().updateAttributes("image", { width: "100%" }).run()}
+            >
+              Img Full
             </ToolbarButton>
           </>
         )}

@@ -15,6 +15,7 @@
 .re2-toolbar {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 8px;
   padding: 12px 14px;
   border-bottom: 1px solid #e2e8f0;
@@ -41,6 +42,18 @@
 .re2-btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+.re2-select {
+  border: 1px solid #cbd5e1;
+  background: white;
+  color: #0f172a;
+  border-radius: 10px;
+  font-weight: 700;
+  min-height: 38px;
+  width: auto;
+  max-width: 130px;
+  padding: 0.45rem 0.65rem;
 }
 
 .re2-divider {
@@ -92,15 +105,27 @@
   width: 100%;
   table-layout: fixed;
   margin: 1rem 0;
+  border: 1.5px solid #64748b;
   overflow: hidden;
 }
 
 .rich-editor-content td,
 .rich-editor-content th {
-  border: 1px solid #cbd5e1;
+  border: 1.5px solid #64748b;
   padding: 10px;
   vertical-align: top;
   min-width: 1em;
+}
+
+.rich-editor-content th {
+  background: #e5e7eb;
+  font-weight: 800;
+  text-align: center;
+}
+
+.rich-editor-content td:first-child {
+  text-align: center;
+  width: 44px;
 }
 
 .rich-editor-content img {
@@ -108,6 +133,30 @@
   height: auto;
   border-radius: 12px;
   margin: 10px 0;
+}
+
+.rich-editor-content img[data-align="left"],
+.preview-html img[data-align="left"],
+.mini-preview-stem img[data-align="left"],
+.mini-option-body img[data-align="left"] {
+  display: block;
+  margin: 10px auto 10px 0;
+}
+
+.rich-editor-content img[data-align="center"],
+.preview-html img[data-align="center"],
+.mini-preview-stem img[data-align="center"],
+.mini-option-body img[data-align="center"] {
+  display: block;
+  margin: 10px auto;
+}
+
+.rich-editor-content img[data-align="right"],
+.preview-html img[data-align="right"],
+.mini-preview-stem img[data-align="right"],
+.mini-option-body img[data-align="right"] {
+  display: block;
+  margin: 10px 0 10px auto;
 }
 
 .rich-editor-content ul,
@@ -132,6 +181,40 @@
 .option-title {
   font-weight: 700;
   color: #0f172a;
+}
+
+.option-mode-switch {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  background: #f1f5f9;
+  border: 1px solid #dbe4f0;
+  border-radius: 14px;
+  padding: 6px;
+}
+
+.option-mode-switch button {
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: #475569;
+  cursor: pointer;
+  font-weight: 800;
+  padding: 10px 14px;
+}
+
+.option-mode-switch button.active {
+  background: #0f172a;
+  color: white;
+}
+
+.option-mode-note {
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 14px;
+  color: #1e3a8a;
+  line-height: 1.55;
+  padding: 14px;
 }
 
 .rich-preview-option {
@@ -359,12 +442,18 @@
 .preview-html table {
   width: 100%;
   border-collapse: collapse;
+  border: 1.5px solid #64748b;
 }
 
 .preview-html td,
 .preview-html th {
-  border: 1px solid #cbd5e1;
+  border: 1.5px solid #64748b;
   padding: 8px;
+}
+
+.preview-html th {
+  background: #e5e7eb;
+  text-align: center;
 }
 
 .preview-html img {
@@ -380,6 +469,77 @@
   padding: 12px 14px;
   border-radius: 14px;
   font-weight: 600;
+}
+
+.preview-options {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.preview-option {
+  display: grid;
+  grid-template-columns: 28px 1fr auto;
+  gap: 10px;
+  align-items: start;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  padding: 12px;
+  color: #0f172a;
+}
+
+.preview-option > div {
+  line-height: 1.55;
+}
+
+.preview-option p {
+  margin: 0;
+}
+
+.preview-option span {
+  background: #dcfce7;
+  border-radius: 999px;
+  color: #15803d;
+  font-size: 0.78rem;
+  font-weight: 800;
+  padding: 4px 8px;
+}
+
+.preview-option-correct {
+  border-color: #86efac;
+  background: #f0fdf4;
+}
+
+.mini-preview-stem table,
+.mini-option-body table {
+  width: 100%;
+  border-collapse: collapse;
+  border: 1.5px solid #64748b;
+  margin: 1rem 0;
+  table-layout: fixed;
+}
+
+.mini-preview-stem td,
+.mini-preview-stem th,
+.mini-option-body td,
+.mini-option-body th {
+  border: 1.5px solid #64748b;
+  padding: 8px 10px;
+  vertical-align: top;
+}
+
+.mini-preview-stem th,
+.mini-option-body th {
+  background: #e5e7eb;
+  font-weight: 800;
+  text-align: center;
+}
+
+.mini-preview-stem td:first-child,
+.mini-option-body td:first-child {
+  text-align: center;
+  width: 44px;
 }
 
 .empty-state {

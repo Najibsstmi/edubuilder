@@ -9,6 +9,7 @@ type PaperType = "paper_1" | "paper_2"
 type SectionType = "A" | "B" | "C" | ""
 type ItemType = "mcq" | "structured" | "limited_response" | "open_response"
 type DifficultyType = "rendah" | "sederhana" | "tinggi"
+type McqOptionMode = "separate" | "in_stem"
 
 type McqOption = {
   label: "A" | "B" | "C" | "D"
@@ -94,8 +95,10 @@ export default function ItemFormPage() {
   const [sourceSchool, setSourceSchool] = useState("")
   const [status, setStatus] = useState("draft")
   const [options, setOptions] = useState<McqOption[]>(initialOptions)
+  const [mcqOptionMode, setMcqOptionMode] = useState<McqOptionMode>("separate")
 
   const isPaper1 = paper === "paper_1"
+  const isStemOptionMode = isPaper1 && mcqOptionMode === "in_stem"
 
   const itemType = useMemo<ItemType>(() => {
     if (paper === "paper_1") return "mcq"
@@ -156,6 +159,20 @@ export default function ItemFormPage() {
     setOptions((prev) =>
       prev.map((opt, i) => (i === index ? { ...opt, text: value } : opt)),
     )
+  }
+
+  function optionTextToHtml(label: McqOption["label"]) {
+    return `<p>${label}</p>`
+  }
+
+  function isLabelOnlyOption(label: McqOption["label"], html: string) {
+    const plainText = html
+      .replace(/<[^>]+>/g, " ")
+      .replace(/&nbsp;/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+
+    return plainText === label
   }
 
   function generateItemCode() {
@@ -264,11 +281,18 @@ export default function ItemFormPage() {
             }
           })
           setOptions(preparedOptions)
+          setMcqOptionMode(
+            preparedOptions.every((opt) => isLabelOnlyOption(opt.label, opt.text))
+              ? "in_stem"
+              : "separate",
+          )
         } else {
           setOptions(initialOptions)
+          setMcqOptionMode("separate")
         }
       } else {
         setOptions(initialOptions)
+        setMcqOptionMode("separate")
       }
     } catch (error: any) {
       console.error(error)
@@ -293,7 +317,10 @@ export default function ItemFormPage() {
     }
 
     if (isPaper1) {
-      const hasEmptyOption = options.some((opt) => isRichContentEmpty(opt.text))
+      const finalOptions = isStemOptionMode
+        ? options.map((opt) => ({ ...opt, text: optionTextToHtml(opt.label) }))
+        : options
+      const hasEmptyOption = finalOptions.some((opt) => isRichContentEmpty(opt.text))
 
       if (hasEmptyOption) {
         setMessage("Semua pilihan jawapan A, B, C dan D wajib diisi.")
@@ -302,6 +329,11 @@ export default function ItemFormPage() {
 
       if (!answerFinal) {
         setMessage("Sila pilih jawapan betul untuk Kertas 1.")
+        return
+      }
+
+      if (isStemOptionMode && isRichContentEmpty(stemText)) {
+        setMessage("Masukkan jadual pilihan A-D dalam stem soalan.")
         return
       }
     }
@@ -423,6 +455,10 @@ export default function ItemFormPage() {
       }
 
       if (isPaper1 && savedItemId) {
+        const finalOptions = isStemOptionMode
+          ? options.map((opt) => ({ ...opt, text: optionTextToHtml(opt.label) }))
+          : options
+
         if (editId) {
           const { error: deleteOldOptionsError } = await supabase
             .from("item_options")
@@ -435,7 +471,7 @@ export default function ItemFormPage() {
           }
         }
 
-        const optionRows = options.map((opt, index) => ({
+        const optionRows = finalOptions.map((opt, index) => ({
           item_id: savedItemId,
           option_label: opt.label,
           option_text: opt.text,
@@ -488,6 +524,7 @@ export default function ItemFormPage() {
     setSourceSchool("")
     setStatus("draft")
     setOptions(initialOptions)
+    setMcqOptionMode("separate")
     setPaper("paper_1")
     setSection("")
     setTingkatan(4)
@@ -679,7 +716,29 @@ export default function ItemFormPage() {
                   <div className="options-block">
                     <div className="section-mini-header">
                       <h3>Pilihan Jawapan</h3>
-                      <p>Pilih satu jawapan betul bagi item objektif. Setiap pilihan boleh mengandungi teks, gambar atau jadual.</p>
+                      <p>Pilih cara pilihan jawapan dimasukkan untuk item objektif.</p>
+                    </div>
+
+                    <div className="option-mode-switch" role="group" aria-label="Mode pilihan jawapan">
+                      <button
+                        type="button"
+                        className={mcqOptionMode === "separate" ? "active" : ""}
+                        onClick={() => setMcqOptionMode("separate")}
+                      >
+                        Pilihan Biasa
+                      </button>
+                      <button
+                        type="button"
+                        className={mcqOptionMode === "in_stem" ? "active" : ""}
+                        onClick={() => {
+                          setMcqOptionMode("in_stem")
+                          setOptions((prev) =>
+                            prev.map((opt) => ({ ...opt, text: optionTextToHtml(opt.label) })),
+                          )
+                        }}
+                      >
+                        Pilihan Dalam Stem / Jadual
+                      </button>
                     </div>
 
                     <Field label="Jawapan Betul">
@@ -696,53 +755,61 @@ export default function ItemFormPage() {
                       </select>
                     </Field>
 
-                    <div className="options-grid options-grid-full">
-                      {options.map((option, index) => (
-                        <div
-                          key={option.label}
-                          className={`option-card option-card-rich ${
-                            answerFinal === option.label ? "selected" : ""
-                          }`}
-                        >
-                          <div className="option-top">
-                            <div className="option-left">
-                              <span className="option-label">{option.label}</span>
-                              <span className="option-title">Pilihan {option.label}</span>
+                    {isStemOptionMode ? (
+                      <div className="option-mode-note">
+                        Masukkan jadual A-D terus dalam Stem Soalan. Sistem akan simpan pilihan ringkas A, B, C dan D untuk rujukan jawapan.
+                      </div>
+                    ) : (
+                      <div className="options-grid options-grid-full">
+                        {options.map((option, index) => (
+                          <div
+                            key={option.label}
+                            className={`option-card option-card-rich ${
+                              answerFinal === option.label ? "selected" : ""
+                            }`}
+                          >
+                            <div className="option-top">
+                              <div className="option-left">
+                                <span className="option-label">{option.label}</span>
+                                <span className="option-title">Pilihan {option.label}</span>
+                              </div>
+
+                              <label className="option-correct">
+                                <input
+                                  type="radio"
+                                  name="correctOption"
+                                  checked={answerFinal === option.label}
+                                  onChange={() => setAnswerFinal(option.label)}
+                                />
+                                <span>Jawapan betul</span>
+                              </label>
                             </div>
 
-                            <label className="option-correct">
-                              <input
-                                type="radio"
-                                name="correctOption"
-                                checked={answerFinal === option.label}
-                                onChange={() => setAnswerFinal(option.label)}
+                            <Suspense fallback={<div className="input">Memuat editor...</div>}>
+                              <RichEditor
+                                value={option.text}
+                                onChange={(value) => handleOptionChange(index, value)}
+                                placeholder={`Isi kandungan pilihan ${option.label} di sini...`}
                               />
-                              <span>Jawapan betul</span>
-                            </label>
+                            </Suspense>
                           </div>
-
-                          <Suspense fallback={<div className="input">Memuat editor...</div>}>
-                            <RichEditor
-                              value={option.text}
-                              onChange={(value) => handleOptionChange(index, value)}
-                              placeholder={`Isi kandungan pilihan ${option.label} di sini...`}
-                            />
-                          </Suspense>
-                        </div>
-                      ))}
-                    </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
 
-                <Field label="Panduan Pemarkahan">
-                  <Suspense fallback={<div className="input">Memuat editor...</div>}>
-                    <RichEditor
-                      value={answerSchemeText}
-                      onChange={setAnswerSchemeText}
-                      placeholder="Masukkan panduan pemarkahan di sini..."
-                    />
-                  </Suspense>
-                </Field>
+                {!isPaper1 && (
+                  <Field label="Panduan Pemarkahan">
+                    <Suspense fallback={<div className="input">Memuat editor...</div>}>
+                      <RichEditor
+                        value={answerSchemeText}
+                        onChange={setAnswerSchemeText}
+                        placeholder="Masukkan panduan pemarkahan di sini..."
+                      />
+                    </Suspense>
+                  </Field>
+                )}
 
                 <Field label="Penerangan / Rasional">
                   <textarea
@@ -1011,7 +1078,7 @@ export default function ItemFormPage() {
                   )}
                 </div>
 
-                {isPaper1 && (
+                {isPaper1 && !isStemOptionMode && (
                   <div className="mini-options">
                     {options.map((opt) => (
                       <div key={opt.label} className="mini-option rich-preview-option">
@@ -1032,13 +1099,20 @@ export default function ItemFormPage() {
                     ))}
                   </div>
                 )}
+
+                {isPaper1 && isStemOptionMode && answerFinal && (
+                  <div className="preview-answer-box">
+                    Jawapan betul: <strong>{answerFinal}</strong>
+                  </div>
+                )}
               </div>
             </Card>
 
             <Card title="Panduan Cepat" subtitle="Rujukan ringkas semasa masukkan item.">
               <ul className="tips-list">
-                <li>Panduan pemarkahan wajib diisi bagi semua item.</li>
+                <li>Panduan pemarkahan wajib diisi bagi item Kertas 2.</li>
                 <li>Kertas 1 perlu 4 pilihan jawapan dan satu jawapan betul.</li>
+                <li>Untuk soalan objektif berjadual, letak jadual A-D dalam stem dan guna mode pilihan dalam stem.</li>
                 <li>Kertas 2 perlu pilih Bahagian A, B atau C.</li>
                 <li>Guna konstruk dan aras yang konsisten untuk memudahkan carian.</li>
               </ul>

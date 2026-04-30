@@ -26,6 +26,17 @@ type ItemRow = {
   answer_final: string | null
   status: "draft" | "pending_review" | "approved" | "rejected" | "published" | "archived"
   created_at: string
+  item_options?: ItemOptionRow[]
+}
+
+type ItemStatus = ItemRow["status"]
+
+type ItemOptionRow = {
+  id: string
+  option_label: string
+  option_text: string | null
+  is_correct: boolean
+  display_order: number
 }
 
 type FilterState = {
@@ -55,8 +66,7 @@ export default function BankSoalanAdmin() {
   const [filters, setFilters] = useState<FilterState>(defaultFilters)
   const [previewItem, setPreviewItem] = useState<ItemRow | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
-  const [archivingId, setArchivingId] = useState<string | null>(null)
-  const [publishingId, setPublishingId] = useState<string | null>(null)
+  const [updatingStatusId, setUpdatingStatusId] = useState<string | null>(null)
   const [message, setMessage] = useState("")
 
   useEffect(() => {
@@ -91,7 +101,14 @@ export default function BankSoalanAdmin() {
         answer_scheme_text,
         answer_final,
         status,
-        created_at
+        created_at,
+        item_options (
+          id,
+          option_label,
+          option_text,
+          is_correct,
+          display_order
+        )
       `)
       .order("created_at", { ascending: false })
 
@@ -105,67 +122,77 @@ export default function BankSoalanAdmin() {
     setLoading(false)
   }
 
-  async function archiveItem(id: string) {
-    setArchivingId(id)
-    setMessage("")
+  async function updateItemStatus(item: ItemRow, nextStatus: ItemStatus) {
+    const confirmMessage = getStatusConfirmMessage(nextStatus)
+    if (confirmMessage && !window.confirm(confirmMessage)) return
 
-    const { error } = await supabase
-      .from("items")
-      .update({ status: "archived" })
-      .eq("id", id)
-
-    if (error) {
-      console.error(error)
-      setMessage("Gagal mengarkibkan item.")
-    } else {
-      setItems((prev) =>
-        prev.map((item) =>
-          item.id === id ? { ...item, status: "archived" } : item,
-        ),
-      )
-      if (previewItem?.id === id) {
-        setPreviewItem({ ...previewItem, status: "archived" })
-      }
-      setMessage("Item berjaya diarkibkan.")
-    }
-
-    setArchivingId(null)
-  }
-
-  async function publishItem(id: string) {
-    setPublishingId(id)
+    setUpdatingStatusId(item.id)
     setMessage("")
 
     const now = new Date().toISOString()
+    const payload: Record<string, string | null> = {
+      status: nextStatus,
+      updated_by: user?.id || null,
+      updated_at: now,
+    }
+
+    if (nextStatus === "approved") {
+      payload.approved_by = user?.id || null
+      payload.approved_at = now
+      payload.rejected_by = null
+      payload.rejected_at = null
+      payload.rejected_reason = null
+    }
+
+    if (nextStatus === "published") {
+      payload.approved_by = user?.id || null
+      payload.approved_at = now
+      payload.published_by = user?.id || null
+      payload.published_at = now
+      payload.rejected_by = null
+      payload.rejected_at = null
+      payload.rejected_reason = null
+    }
+
+    if (nextStatus === "rejected") {
+      const reason = window.prompt("Sebab reject item ini?")?.trim()
+      if (!reason) {
+        setUpdatingStatusId(null)
+        return
+      }
+      payload.rejected_by = user?.id || null
+      payload.rejected_at = now
+      payload.rejected_reason = reason
+      payload.published_by = null
+      payload.published_at = null
+    }
+
+    if (nextStatus === "archived") {
+      payload.published_by = null
+      payload.published_at = null
+    }
+
     const { error } = await supabase
       .from("items")
-      .update({
-        status: "published",
-        approved_by: user?.id || null,
-        approved_at: now,
-        published_by: user?.id || null,
-        published_at: now,
-        updated_by: user?.id || null,
-        updated_at: now,
-      })
-      .eq("id", id)
+      .update(payload)
+      .eq("id", item.id)
 
     if (error) {
       console.error(error)
-      setMessage("Gagal publish item.")
+      setMessage(`Gagal tukar status item kepada ${nextStatus}.`)
     } else {
       setItems((prev) =>
-        prev.map((item) =>
-          item.id === id ? { ...item, status: "published" } : item,
+        prev.map((row) =>
+          row.id === item.id ? { ...row, status: nextStatus } : row,
         ),
       )
-      if (previewItem?.id === id) {
-        setPreviewItem({ ...previewItem, status: "published" })
+      if (previewItem?.id === item.id) {
+        setPreviewItem({ ...previewItem, status: nextStatus })
       }
-      setMessage("Item berjaya dipublish. Item ini kini boleh digunakan dalam Bina Set Soalan.")
+      setMessage(getStatusSuccessMessage(nextStatus))
     }
 
-    setPublishingId(null)
+    setUpdatingStatusId(null)
   }
 
   async function deleteItem(id: string) {
@@ -226,8 +253,10 @@ export default function BankSoalanAdmin() {
     const total = items.length
     const paper1 = items.filter((i) => i.paper === "paper_1").length
     const paper2 = items.filter((i) => i.paper === "paper_2").length
+    const draft = items.filter((i) => i.status === "draft").length
+    const review = items.filter((i) => i.status === "pending_review").length
     const published = items.filter((i) => i.status === "published").length
-    return { total, paper1, paper2, published }
+    return { total, paper1, paper2, draft, review, published }
   }, [items])
 
   const constructOptions = useMemo(() => {
@@ -257,6 +286,8 @@ export default function BankSoalanAdmin() {
         <StatCard title="Jumlah Item" value={stats.total} />
         <StatCard title="Kertas 1" value={stats.paper1} />
         <StatCard title="Kertas 2" value={stats.paper2} />
+        <StatCard title="Draft" value={stats.draft} />
+        <StatCard title="Semakan" value={stats.review} />
         <StatCard title="Published" value={stats.published} />
       </div>
 
@@ -468,24 +499,57 @@ export default function BankSoalanAdmin() {
                       Edit
                     </Link>
 
+                    {item.status === "draft" && (
+                      <button
+                        type="button"
+                        className="btn btn-light btn-sm"
+                        onClick={() => updateItemStatus(item, "pending_review")}
+                        disabled={updatingStatusId === item.id}
+                      >
+                        Hantar Semakan
+                      </button>
+                    )}
+
+                    {item.status !== "approved" && item.status !== "published" && item.status !== "archived" && (
+                      <button
+                        type="button"
+                        className="btn btn-light btn-sm"
+                        onClick={() => updateItemStatus(item, "approved")}
+                        disabled={updatingStatusId === item.id}
+                      >
+                        Approve
+                      </button>
+                    )}
+
                     {item.status !== "published" && item.status !== "archived" && (
                       <button
                         type="button"
                         className="btn btn-primary btn-sm"
-                        onClick={() => publishItem(item.id)}
-                        disabled={publishingId === item.id}
+                        onClick={() => updateItemStatus(item, "published")}
+                        disabled={updatingStatusId === item.id}
                       >
-                        {publishingId === item.id ? "Publishing..." : "Publish"}
+                        Publish
+                      </button>
+                    )}
+
+                    {item.status !== "rejected" && item.status !== "published" && item.status !== "archived" && (
+                      <button
+                        type="button"
+                        className="btn btn-light btn-sm"
+                        onClick={() => updateItemStatus(item, "rejected")}
+                        disabled={updatingStatusId === item.id}
+                      >
+                        Reject
                       </button>
                     )}
 
                     <button
                       type="button"
                       className="btn btn-light btn-sm"
-                      onClick={() => archiveItem(item.id)}
-                      disabled={archivingId === item.id}
+                      onClick={() => updateItemStatus(item, "archived")}
+                      disabled={updatingStatusId === item.id}
                     >
-                      {archivingId === item.id ? "Processing..." : "Arkib"}
+                      Arkib
                     </button>
 
                     <button
@@ -593,19 +657,53 @@ export default function BankSoalanAdmin() {
                   />
                 </div>
 
-                <div className="preview-section-block">
-                  <h3>Panduan Pemarkahan</h3>
-                  <div
-                    className="preview-html"
-                    dangerouslySetInnerHTML={{
-                      __html: previewItem.answer_scheme_text || "<p>-</p>",
-                    }}
-                  />
-                </div>
+                {previewItem.paper === "paper_1" && (
+                  <div className="preview-section-block">
+                    <h3>Pilihan Jawapan</h3>
+                    <div className="preview-options">
+                      {getSortedOptions(previewItem).length === 0 ? (
+                        <div className="empty-state">Pilihan jawapan belum dijumpai.</div>
+                      ) : hasOptionsInStem(previewItem) ? (
+                        <div className="option-mode-note">
+                          Pilihan A-D berada dalam stem soalan/jadual di atas.
+                        </div>
+                      ) : (
+                        getSortedOptions(previewItem).map((option) => (
+                          <div
+                            key={option.id}
+                            className={`preview-option ${
+                              option.is_correct ? "preview-option-correct" : ""
+                            }`}
+                          >
+                            <strong>{option.option_label}.</strong>
+                            <div
+                              dangerouslySetInnerHTML={{
+                                __html: option.option_text || "<p>-</p>",
+                              }}
+                            />
+                            {option.is_correct && <span>Betul</span>}
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {previewItem.paper === "paper_2" && (
+                  <div className="preview-section-block">
+                    <h3>Panduan Pemarkahan</h3>
+                    <div
+                      className="preview-html"
+                      dangerouslySetInnerHTML={{
+                        __html: previewItem.answer_scheme_text || "<p>-</p>",
+                      }}
+                    />
+                  </div>
+                )}
 
                 {previewItem.paper === "paper_1" && previewItem.answer_final && (
                   <div className="preview-answer-box">
-                    Jawapan akhir: <strong>{previewItem.answer_final}</strong>
+                    Jawapan betul: <strong>{previewItem.answer_final}</strong>
                   </div>
                 )}
               </div>
@@ -673,6 +771,43 @@ function stripHtml(html: string) {
     .replace(/<[^>]+>/g, " ")
     .replace(/\s+/g, " ")
     .trim()
+}
+
+function getSortedOptions(item: ItemRow) {
+  return [...(item.item_options || [])].sort(
+    (a, b) => a.display_order - b.display_order || a.option_label.localeCompare(b.option_label),
+  )
+}
+
+function hasOptionsInStem(item: ItemRow) {
+  const options = getSortedOptions(item)
+  if (options.length !== 4) return false
+
+  return options.every((option) => {
+    const plainText = stripHtml(option.option_text || "")
+    return plainText === option.option_label
+  })
+}
+
+function getStatusConfirmMessage(status: ItemStatus) {
+  if (status === "published") {
+    return "Publish item ini? Item published akan boleh digunakan dalam Bina Set Soalan."
+  }
+  if (status === "archived") {
+    return "Arkibkan item ini? Item archived tidak akan digunakan dalam builder."
+  }
+  return ""
+}
+
+function getStatusSuccessMessage(status: ItemStatus) {
+  if (status === "pending_review") return "Item dihantar untuk semakan."
+  if (status === "approved") return "Item berjaya diapprove."
+  if (status === "published") {
+    return "Item berjaya dipublish. Item ini kini boleh digunakan dalam Bina Set Soalan."
+  }
+  if (status === "rejected") return "Item berjaya direject."
+  if (status === "archived") return "Item berjaya diarkibkan."
+  return "Status item berjaya dikemaskini."
 }
 
 function difficultyTone(value: ItemRow["difficulty_level"]): "green" | "yellow" | "red" | "gray" {
