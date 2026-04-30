@@ -27,6 +27,7 @@ type ItemRow = {
   status: "draft" | "pending_review" | "approved" | "rejected" | "published" | "archived"
   created_at: string
   item_options?: ItemOptionRow[]
+  item_subquestions?: SubQuestionRow[]
 }
 
 type ItemStatus = ItemRow["status"]
@@ -36,6 +37,18 @@ type ItemOptionRow = {
   option_label: string
   option_text: string | null
   is_correct: boolean
+  display_order: number
+}
+
+type SubQuestionRow = {
+  id: string
+  item_id: string
+  label: string
+  sub_label: string | null
+  question_text: string
+  answer_scheme_text: string
+  marks: number
+  response_type: string
   display_order: number
 }
 
@@ -116,7 +129,35 @@ export default function BankSoalanAdmin() {
       console.error(error)
       setMessage("Gagal memuatkan bank soalan.")
     } else {
-      setItems((data || []) as ItemRow[])
+      const rows = (data || []) as ItemRow[]
+      const paper2Ids = rows.filter((item) => item.paper === "paper_2").map((item) => item.id)
+
+      if (paper2Ids.length > 0) {
+        const { data: subQuestionData, error: subQuestionError } = await supabase
+          .from("item_subquestions")
+          .select("*")
+          .in("item_id", paper2Ids)
+          .order("display_order", { ascending: true })
+
+        if (subQuestionError) {
+          console.warn("Subquestion bank fetch skipped", subQuestionError)
+          setItems(rows)
+        } else {
+          const grouped = new Map<string, SubQuestionRow[]>()
+          ;(subQuestionData || []).forEach((row: SubQuestionRow) => {
+            grouped.set(row.item_id, [...(grouped.get(row.item_id) || []), row])
+          })
+
+          setItems(
+            rows.map((item) => ({
+              ...item,
+              item_subquestions: grouped.get(item.id) || [],
+            })),
+          )
+        }
+      } else {
+        setItems(rows)
+      }
     }
 
     setLoading(false)
@@ -638,10 +679,6 @@ export default function BankSoalanAdmin() {
                     value={previewItem.item_type}
                   />
                   <PreviewRow
-                    label="Stimulus"
-                    value={previewItem.stimulus_type || "-"}
-                  />
-                  <PreviewRow
                     label="Status"
                     value={previewItem.status}
                   />
@@ -691,7 +728,38 @@ export default function BankSoalanAdmin() {
 
                 {previewItem.paper === "paper_2" && (
                   <div className="preview-section-block">
-                    <h3>Panduan Pemarkahan</h3>
+                    <h3>Sub-soalan</h3>
+                    {getSortedSubQuestions(previewItem).length === 0 ? (
+                      <div
+                        className="preview-html"
+                        dangerouslySetInnerHTML={{
+                          __html: previewItem.answer_scheme_text || "<p>-</p>",
+                        }}
+                      />
+                    ) : (
+                      <div className="preview-subquestions">
+                        {getSortedSubQuestions(previewItem).map((subQuestion) => (
+                          <div key={subQuestion.id} className="preview-subquestion">
+                            <div className="preview-subquestion-head">
+                              <strong>{formatSubQuestionLabel(subQuestion)}</strong>
+                              <span>{subQuestion.marks} markah</span>
+                            </div>
+                            <div
+                              className="preview-html"
+                              dangerouslySetInnerHTML={{
+                                __html: subQuestion.question_text || "<p>-</p>",
+                              }}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {previewItem.paper === "paper_2" && (
+                  <div className="preview-section-block">
+                    <h3>Panduan Pemarkahan / Skema Jawapan</h3>
                     <div
                       className="preview-html"
                       dangerouslySetInnerHTML={{
@@ -777,6 +845,16 @@ function getSortedOptions(item: ItemRow) {
   return [...(item.item_options || [])].sort(
     (a, b) => a.display_order - b.display_order || a.option_label.localeCompare(b.option_label),
   )
+}
+
+function getSortedSubQuestions(item: ItemRow) {
+  return [...(item.item_subquestions || [])].sort(
+    (a, b) => a.display_order - b.display_order || a.label.localeCompare(b.label),
+  )
+}
+
+function formatSubQuestionLabel(item: Pick<SubQuestionRow, "label" | "sub_label">) {
+  return `(${item.label})${item.sub_label ? `(${item.sub_label})` : ""}`
 }
 
 function hasOptionsInStem(item: ItemRow) {

@@ -10,10 +10,26 @@ type SectionType = "A" | "B" | "C" | ""
 type ItemType = "mcq" | "structured" | "limited_response" | "open_response"
 type DifficultyType = "rendah" | "sederhana" | "tinggi"
 type McqOptionMode = "separate" | "in_stem"
+type SubQuestionResponseType =
+  | "short_text"
+  | "structured_text"
+  | "table"
+  | "drawing"
+  | "design"
+  | "calculation"
 
 type McqOption = {
   label: "A" | "B" | "C" | "D"
   text: string
+}
+
+type SubQuestion = {
+  id: string
+  label: string
+  subLabel: string
+  questionText: string
+  marks: number
+  responseType: SubQuestionResponseType
 }
 
 const initialOptions: McqOption[] = [
@@ -21,6 +37,17 @@ const initialOptions: McqOption[] = [
   { label: "B", text: "" },
   { label: "C", text: "" },
   { label: "D", text: "" },
+]
+
+const initialSubQuestions: SubQuestion[] = [
+  {
+    id: crypto.randomUUID(),
+    label: "a",
+    subLabel: "",
+    questionText: "",
+    marks: 1,
+    responseType: "short_text",
+  },
 ]
 
 const constructGroupOrder = [
@@ -96,9 +123,16 @@ export default function ItemFormPage() {
   const [status, setStatus] = useState("draft")
   const [options, setOptions] = useState<McqOption[]>(initialOptions)
   const [mcqOptionMode, setMcqOptionMode] = useState<McqOptionMode>("separate")
+  const [metadataSuggestion, setMetadataSuggestion] = useState("")
+  const [suggestingMetadata, setSuggestingMetadata] = useState(false)
+  const [subQuestions, setSubQuestions] = useState<SubQuestion[]>(initialSubQuestions)
 
   const isPaper1 = paper === "paper_1"
   const isStemOptionMode = isPaper1 && mcqOptionMode === "in_stem"
+  const totalSubQuestionMarks = useMemo(
+    () => subQuestions.reduce((total, item) => total + (Number(item.marks) || 0), 0),
+    [subQuestions],
+  )
 
   const itemType = useMemo<ItemType>(() => {
     if (paper === "paper_1") return "mcq"
@@ -161,6 +195,37 @@ export default function ItemFormPage() {
     )
   }
 
+  function addSubQuestion() {
+    const nextLabel = String.fromCharCode(97 + subQuestions.length)
+    setSubQuestions((prev) => [
+      ...prev,
+      {
+        id: crypto.randomUUID(),
+        label: nextLabel,
+        subLabel: "",
+        questionText: "",
+        marks: 1,
+        responseType: "short_text",
+      },
+    ])
+  }
+
+  function updateSubQuestion(id: string, patch: Partial<SubQuestion>) {
+    setSubQuestions((prev) =>
+      prev.map((item) => (item.id === id ? { ...item, ...patch } : item)),
+    )
+  }
+
+  function removeSubQuestion(id: string) {
+    setSubQuestions((prev) =>
+      prev.length <= 1 ? prev : prev.filter((item) => item.id !== id),
+    )
+  }
+
+  function formatSubQuestionLabel(item: Pick<SubQuestion, "label" | "subLabel">) {
+    return `(${item.label})${item.subLabel ? `(${item.subLabel})` : ""}`
+  }
+
   function optionTextToHtml(label: McqOption["label"]) {
     return `<p>${label}</p>`
   }
@@ -173,6 +238,215 @@ export default function ItemFormPage() {
       .trim()
 
     return plainText === label
+  }
+
+  function htmlToText(html: string) {
+    return html
+      .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, " ")
+      .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, " ")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/&nbsp;/g, " ")
+      .replace(/&amp;/g, "&")
+      .replace(/\s+/g, " ")
+      .trim()
+  }
+
+  function tokenize(text: string) {
+    const stopwords = new Set([
+      "yang",
+      "dan",
+      "atau",
+      "dalam",
+      "dengan",
+      "bagi",
+      "pada",
+      "untuk",
+      "berikut",
+      "manakah",
+      "apakah",
+      "antara",
+      "rajah",
+      "jadual",
+      "soalan",
+      "pilih",
+      "jawapan",
+      "betul",
+      "menunjukkan",
+      "suatu",
+      "satu",
+      "the",
+      "and",
+      "which",
+      "following",
+      "correct",
+    ])
+
+    return text
+      .toLowerCase()
+      .replace(/[^a-z0-9\u00c0-\u024f]+/gi, " ")
+      .split(/\s+/)
+      .filter((word) => word.length > 3 && !stopwords.has(word))
+  }
+
+  function inferConstructGroup(text: string) {
+    const lower = text.toLowerCase()
+
+    if (/(wajarkan|justifikasi|nilai|bandingkan|terbaik|sesuai|kesimpulan)/.test(lower)) {
+      return "Menilai"
+    }
+    if (/(ramalkan|analisis|hubungan|pola|trend|inferens|sebab|mengapa|bezakan)/.test(lower)) {
+      return "Analisis (Menganalisis)"
+    }
+    if (/(hitung|kira|calculate|gunakan formula|tentukan nilai|aplikasi)/.test(lower)) {
+      return "Aplikasi (Mengaplikasi)"
+    }
+    if (/(terangkan|jelaskan|apakah yang dimaksudkan|maksud|fungsi|nyatakan sebab)/.test(lower)) {
+      return "Kefahaman (Memahami)"
+    }
+    if (/(namakan|nyatakan|labelkan|pilih|apakah|manakah|kenal pasti)/.test(lower)) {
+      return "Pengetahuan (Mengingat)"
+    }
+
+    return isPaper1 ? "Pengetahuan (Mengingat)" : "Kefahaman (Memahami)"
+  }
+
+  function inferDifficulty(text: string): DifficultyType {
+    const lower = text.toLowerCase()
+    if (/(wajarkan|justifikasi|cadangkan|rekabentuk|analisis|ramalkan|evaluate|justify)/.test(lower)) {
+      return "tinggi"
+    }
+    if (/(hitung|kira|terangkan|jelaskan|bandingkan|inferens|mengapa|calculate)/.test(lower)) {
+      return "sederhana"
+    }
+    return isPaper1 ? "rendah" : "sederhana"
+  }
+
+  async function suggestMetadata() {
+    setMetadataSuggestion("")
+
+    const optionText = options.map((opt) => htmlToText(opt.text)).join(" ")
+    const questionText = [
+      questionInstruction,
+      htmlToText(stemText),
+      isStemOptionMode ? "" : optionText,
+      subQuestions.map((sq) => htmlToText(sq.questionText)).join(" "),
+      htmlToText(answerSchemeText),
+      explanationText,
+    ].join(" ")
+
+    if (!questionText.trim()) {
+      setMetadataSuggestion("Masukkan stem soalan dahulu sebelum guna cadangan metadata.")
+      return
+    }
+
+    if (standards.length === 0 || constructs.length === 0) {
+      setMetadataSuggestion("Data standard akademik atau konstruk belum dimuatkan.")
+      return
+    }
+
+    setSuggestingMetadata(true)
+
+    try {
+      const words = tokenize(questionText)
+      const wordSet = new Set(words)
+
+      const scoredStandards = standards
+        .map((standard) => {
+          const haystack = [
+            standard.theme_name,
+            standard.bidang_code,
+            standard.bidang_name,
+            standard.standard_kandungan_code,
+            standard.standard_kandungan_name,
+            standard.standard_pembelajaran_code,
+            standard.standard_pembelajaran_name,
+          ]
+            .filter(Boolean)
+            .join(" ")
+            .toLowerCase()
+
+          const score = Array.from(wordSet).reduce((total, word) => {
+            if (!haystack.includes(word)) return total
+            if ((standard.standard_pembelajaran_name || "").toLowerCase().includes(word)) return total + 5
+            if ((standard.standard_kandungan_name || "").toLowerCase().includes(word)) return total + 4
+            if ((standard.bidang_name || "").toLowerCase().includes(word)) return total + 3
+            return total + 1
+          }, 0)
+
+          return { standard, score }
+        })
+        .sort((a, b) => b.score - a.score)
+
+      const bestStandard = scoredStandards[0]?.standard
+
+      if (bestStandard && scoredStandards[0].score > 0) {
+        setSelectedTema(bestStandard.theme_name || "")
+        setSelectedBidangCode(bestStandard.bidang_code || "")
+        setSelectedSKCode(bestStandard.standard_kandungan_code || "")
+        setSelectedSPCode(bestStandard.standard_pembelajaran_code || "")
+      }
+
+      const suggestedConstruct = inferConstructGroup(questionText)
+      const availableConstructGroup =
+        constructs.find((c) => c.construct_group === suggestedConstruct)?.construct_group ||
+        constructs.find((c) =>
+          (c.construct_group || "").toLowerCase().includes(
+            suggestedConstruct.replace(/^.*\((.*)\).*$/, "$1").toLowerCase(),
+          ),
+        )?.construct_group ||
+        constructGroupList[0] ||
+        ""
+      const availableConstruct = constructs.find((c) => c.construct_group === availableConstructGroup)
+
+      if (availableConstructGroup) {
+        setMainConstruct(availableConstructGroup)
+        setConstructCode(availableConstruct?.construct_code || "")
+      }
+
+      const suggestedDifficulty = inferDifficulty(questionText)
+      setDifficultyLevel(suggestedDifficulty)
+
+      const result = {
+        standard:
+          bestStandard && scoredStandards[0].score > 0
+            ? {
+                theme_name: bestStandard.theme_name,
+                bidang_code: bestStandard.bidang_code,
+                standard_kandungan_code: bestStandard.standard_kandungan_code,
+                standard_pembelajaran_code: bestStandard.standard_pembelajaran_code,
+                score: scoredStandards[0].score,
+              }
+            : null,
+        construct_group: availableConstructGroup || null,
+        construct_code: availableConstruct?.construct_code || null,
+        difficulty_level: suggestedDifficulty,
+      }
+
+      if (profile?.id) {
+        await supabase.from("ai_usage_logs").insert({
+          profile_id: profile.id,
+          usage_type: "suggest_metadata_rule_based",
+          input_snapshot: {
+            tingkatan,
+            paper,
+            section,
+            text: questionText.slice(0, 2500),
+          },
+          output_snapshot: result,
+        })
+      }
+
+      setMetadataSuggestion(
+        bestStandard && scoredStandards[0].score > 0
+          ? `Cadangan metadata diisi. Padanan standard skor ${scoredStandards[0].score}; sila semak sebelum simpan.`
+          : "Cadangan konstruk dan aras diisi, tetapi standard akademik kurang yakin. Sila pilih Tema/Bidang/SK/SP secara manual.",
+      )
+    } catch (error: any) {
+      console.error(error)
+      setMetadataSuggestion(error.message || "Gagal menjana cadangan metadata.")
+    } finally {
+      setSuggestingMetadata(false)
+    }
   }
 
   function generateItemCode() {
@@ -293,6 +567,30 @@ export default function ItemFormPage() {
       } else {
         setOptions(initialOptions)
         setMcqOptionMode("separate")
+
+        const { data: subQuestionData, error: subQuestionError } = await supabase
+          .from("item_subquestions")
+          .select("*")
+          .eq("item_id", itemId)
+          .order("display_order", { ascending: true })
+
+        if (subQuestionError) {
+          console.warn("Subquestion fetch skipped", subQuestionError)
+          setSubQuestions(initialSubQuestions)
+        } else if (subQuestionData && subQuestionData.length > 0) {
+          setSubQuestions(
+            subQuestionData.map((row: any) => ({
+              id: row.id || crypto.randomUUID(),
+              label: row.label || "a",
+              subLabel: row.sub_label || "",
+              questionText: row.question_text || "",
+              marks: row.marks || 1,
+              responseType: row.response_type || "short_text",
+            })),
+          )
+        } else {
+          setSubQuestions(initialSubQuestions)
+        }
       }
     } catch (error: any) {
       console.error(error)
@@ -344,8 +642,30 @@ export default function ItemFormPage() {
         return
       }
 
+      if (subQuestions.length === 0) {
+        setMessage("Tambah sekurang-kurangnya satu sub-soalan untuk Kertas 2.")
+        return
+      }
+
+      const incompleteSubQuestion = subQuestions.find(
+        (item) =>
+          !item.label.trim() ||
+          isRichContentEmpty(item.questionText) ||
+          Number(item.marks) < 1,
+      )
+
+      if (incompleteSubQuestion) {
+        setMessage("Setiap sub-soalan perlu label, teks soalan dan markah.")
+        return
+      }
+
       if (isRichContentEmpty(answerSchemeText)) {
-        setMessage("Panduan pemarkahan wajib diisi untuk Kertas 2.")
+        setMessage("Panduan pemarkahan / skema jawapan wajib diisi untuk Kertas 2.")
+        return
+      }
+
+      if (section === "A" && totalSubQuestionMarks !== 5) {
+        setMessage("Bahagian A mesti berjumlah 5 markah.")
         return
       }
     }
@@ -397,7 +717,7 @@ export default function ItemFormPage() {
           !isPaper1 && questionNoReference.trim() ? questionNoReference.trim() : null,
 
         item_type: isPaper1 ? "mcq" : itemType,
-        marks: isPaper1 ? 1 : marks,
+        marks: isPaper1 ? 1 : totalSubQuestionMarks,
 
         theme_name: selectedTema || null,
         bidang_learning_code: selectedBidangObj?.code || null,
@@ -489,6 +809,40 @@ export default function ItemFormPage() {
         }
       }
 
+      if (!isPaper1 && savedItemId) {
+        if (editId) {
+          const { error: deleteOldSubQuestionsError } = await supabase
+            .from("item_subquestions")
+            .delete()
+            .eq("item_id", savedItemId)
+
+          if (deleteOldSubQuestionsError) {
+            console.error("Subquestion cleanup error", deleteOldSubQuestionsError)
+            throw new Error(`Gagal kemas sub-soalan lama: ${deleteOldSubQuestionsError.message}`)
+          }
+        }
+
+        const rows = subQuestions.map((item, index) => ({
+          item_id: savedItemId,
+          label: item.label.trim(),
+          sub_label: item.subLabel.trim() || null,
+          question_text: item.questionText,
+          answer_scheme_text: "-",
+          marks: Number(item.marks) || 1,
+          response_type: item.responseType,
+          display_order: index + 1,
+        }))
+
+        const { error: subQuestionError } = await supabase
+          .from("item_subquestions")
+          .insert(rows)
+
+        if (subQuestionError) {
+          console.error("Subquestion insert error", { error: subQuestionError, rows })
+          throw new Error(`Gagal simpan sub-soalan: ${subQuestionError.message}`)
+        }
+      }
+
       setMessage(editId ? "Soalan berjaya dikemaskini." : "Soalan berjaya disimpan.")
       if (!editId) {
         resetForm()
@@ -525,6 +879,7 @@ export default function ItemFormPage() {
     setStatus("draft")
     setOptions(initialOptions)
     setMcqOptionMode("separate")
+    setSubQuestions(initialSubQuestions)
     setPaper("paper_1")
     setSection("")
     setTingkatan(4)
@@ -581,7 +936,7 @@ export default function ItemFormPage() {
           className={`paper-tab ${paper === "paper_2" ? "active" : ""}`}
           onClick={() => {
             setPaper("paper_2")
-            setMarks(1)
+            setMarks(totalSubQuestionMarks || 5)
           }}
         >
           Kertas 2 Subjektif
@@ -634,10 +989,11 @@ export default function ItemFormPage() {
                 <Field label="Markah">
                   <input
                     type="number"
-                    value={marks}
+                    value={isPaper1 ? 1 : totalSubQuestionMarks}
                     onChange={(e) => setMarks(Number(e.target.value))}
                     className="input"
                     min={1}
+                    readOnly={!isPaper1}
                   />
                 </Field>
 
@@ -647,7 +1003,7 @@ export default function ItemFormPage() {
                       value={questionNoReference}
                       onChange={(e) => setQuestionNoReference(e.target.value)}
                       className="input"
-                      placeholder="Contoh: 11 / 12 / 13"
+                      placeholder="Contoh: 5 / 6 / 11 / 12"
                     />
                   </Field>
                 )}
@@ -671,37 +1027,14 @@ export default function ItemFormPage() {
                   </select>
                 </Field>
 
-                <Field label="Jenis Stimulus">
-                  <select
-                    value={stimulusType}
-                    onChange={(e) => setStimulusType(e.target.value)}
-                    className="input"
-                  >
-                    <option value="text">text</option>
-                    <option value="image">image</option>
-                    <option value="table">table</option>
-                    <option value="graph">graph</option>
-                    <option value="diagram">diagram</option>
-                    <option value="mixed">mixed</option>
-                  </select>
-                </Field>
               </div>
             </Card>
 
             <Card
               title="Kandungan Soalan"
-              subtitle="Isi stem, arahan dan kandungan utama item."
+              subtitle="Isi stem, stimulus, rajah, jadual dan konteks utama item."
             >
               <div className="space-y-4">
-                <Field label="Arahan Soalan">
-                  <input
-                    value={questionInstruction}
-                    onChange={(e) => setQuestionInstruction(e.target.value)}
-                    className="input"
-                    placeholder="Contoh: Jawab semua soalan"
-                  />
-                </Field>
-
                 <Field label="Stem Soalan">
                   <Suspense fallback={<div className="input">Memuat editor...</div>}>
                     <RichEditor
@@ -800,15 +1133,127 @@ export default function ItemFormPage() {
                 )}
 
                 {!isPaper1 && (
-                  <Field label="Panduan Pemarkahan">
-                    <Suspense fallback={<div className="input">Memuat editor...</div>}>
-                      <RichEditor
-                        value={answerSchemeText}
-                        onChange={setAnswerSchemeText}
-                        placeholder="Masukkan panduan pemarkahan di sini..."
-                      />
-                    </Suspense>
-                  </Field>
+                  <div className="subquestion-block">
+                    <div className="section-mini-header subquestion-head">
+                      <div>
+                        <h3>Sub-soalan Kertas 2</h3>
+                        <p>Isi pecahan seperti (a), (b), (a)(i), markah dan skema jawapan.</p>
+                      </div>
+                      <div className="subquestion-total">
+                        Jumlah: <strong>{totalSubQuestionMarks}</strong> markah
+                      </div>
+                    </div>
+
+                    {section === "A" && totalSubQuestionMarks !== 5 && (
+                      <div className="metadata-ai-message">
+                        Bahagian A perlu tepat 5 markah. Jumlah semasa: {totalSubQuestionMarks} markah.
+                      </div>
+                    )}
+
+                    <div className="subquestion-list">
+                      {subQuestions.map((item, index) => (
+                        <div key={item.id} className="subquestion-card">
+                          <div className="subquestion-card-head">
+                            <strong>Sub-soalan {formatSubQuestionLabel(item)}</strong>
+                            <button
+                              type="button"
+                              className="btn btn-light btn-sm"
+                              onClick={() => removeSubQuestion(item.id)}
+                              disabled={subQuestions.length <= 1}
+                            >
+                              Buang
+                            </button>
+                          </div>
+
+                          <div className="form-grid form-grid-4">
+                            <Field label="Label">
+                              <select
+                                value={item.label}
+                                onChange={(e) => updateSubQuestion(item.id, { label: e.target.value })}
+                                className="input"
+                              >
+                                {["a", "b", "c", "d", "e"].map((label) => (
+                                  <option key={label} value={label}>
+                                    {label}
+                                  </option>
+                                ))}
+                              </select>
+                            </Field>
+
+                            <Field label="Sub-label">
+                              <select
+                                value={item.subLabel}
+                                onChange={(e) => updateSubQuestion(item.id, { subLabel: e.target.value })}
+                                className="input"
+                              >
+                                <option value="">-</option>
+                                <option value="i">i</option>
+                                <option value="ii">ii</option>
+                                <option value="iii">iii</option>
+                                <option value="iv">iv</option>
+                              </select>
+                            </Field>
+
+                            <Field label="Markah">
+                              <input
+                                type="number"
+                                min={1}
+                                value={item.marks}
+                                onChange={(e) =>
+                                  updateSubQuestion(item.id, { marks: Number(e.target.value) })
+                                }
+                                className="input"
+                              />
+                            </Field>
+
+                            <Field label="Jenis Respons">
+                              <select
+                                value={item.responseType}
+                                onChange={(e) =>
+                                  updateSubQuestion(item.id, {
+                                    responseType: e.target.value as SubQuestionResponseType,
+                                  })
+                                }
+                                className="input"
+                              >
+                                <option value="short_text">Jawapan ringkas</option>
+                                <option value="structured_text">Berstruktur</option>
+                                <option value="table">Jadual</option>
+                                <option value="drawing">Lakaran</option>
+                                <option value="design">Rekacipta</option>
+                                <option value="calculation">Pengiraan</option>
+                              </select>
+                            </Field>
+                          </div>
+
+                          <Field label={`Teks Soalan ${formatSubQuestionLabel(item)}`}>
+                            <Suspense fallback={<div className="input">Memuat editor...</div>}>
+                              <RichEditor
+                                value={item.questionText}
+                                onChange={(value) => updateSubQuestion(item.id, { questionText: value })}
+                                placeholder={`Masukkan sub-soalan ${formatSubQuestionLabel(item)}...`}
+                              />
+                            </Suspense>
+                          </Field>
+
+                        </div>
+                      ))}
+                    </div>
+
+                    <button type="button" className="btn btn-light" onClick={addSubQuestion}>
+                      + Tambah Sub-soalan
+                    </button>
+
+                    <Field label="Panduan Pemarkahan / Skema Jawapan">
+                      <Suspense fallback={<div className="input">Memuat editor...</div>}>
+                        <RichEditor
+                          value={answerSchemeText}
+                          onChange={setAnswerSchemeText}
+                          placeholder="Masukkan skema keseluruhan item, contoh: (a) ... [1 markah], (b) ... [1 markah]"
+                        />
+                      </Suspense>
+                    </Field>
+                  </div>
                 )}
 
                 <Field label="Penerangan / Rasional">
@@ -826,6 +1271,25 @@ export default function ItemFormPage() {
               title="Metadata Akademik"
               subtitle="Pilih standard DSKP. Maklumat kod akan diisi secara automatik."
             >
+              <div className="metadata-ai-bar">
+                <div>
+                  <strong>Cadangan metadata</strong>
+                  <span>Pra-isi Tema, Bidang, SK, SP, konstruk dan aras berdasarkan kandungan soalan.</span>
+                </div>
+                <button
+                  type="button"
+                  className="btn btn-light"
+                  onClick={() => void suggestMetadata()}
+                  disabled={suggestingMetadata}
+                >
+                  {suggestingMetadata ? "Menganalisis..." : "Cadang Metadata"}
+                </button>
+              </div>
+
+              {metadataSuggestion && (
+                <div className="metadata-ai-message">{metadataSuggestion}</div>
+              )}
+
               <div className="metadata-clean-grid">
                 <Field label="Tema">
                   <select
@@ -1044,7 +1508,7 @@ export default function ItemFormPage() {
                 <PreviewRow label="Tingkatan" value={`Tingkatan ${tingkatan}`} />
                 <PreviewRow label="Bahagian" value={section || "-"} />
                 <PreviewRow label="Jenis Item" value={itemType} />
-                <PreviewRow label="Markah" value={String(marks)} />
+                <PreviewRow label="Markah" value={String(isPaper1 ? 1 : totalSubQuestionMarks)} />
                 <PreviewRow
                   label="Bidang"
                   value={
@@ -1105,15 +1569,34 @@ export default function ItemFormPage() {
                     Jawapan betul: <strong>{answerFinal}</strong>
                   </div>
                 )}
+
+                {!isPaper1 && (
+                  <div className="mini-subquestions">
+                    {subQuestions.map((item) => (
+                      <div key={item.id} className="mini-subquestion">
+                        <div className="mini-option-head">
+                          <strong>{formatSubQuestionLabel(item)}</strong>
+                          <span>{item.marks} markah</span>
+                        </div>
+                        <div
+                          className="mini-option-body"
+                          dangerouslySetInnerHTML={{
+                            __html: item.questionText || "<p>Sub-soalan akan dipaparkan di sini.</p>",
+                          }}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </Card>
 
             <Card title="Panduan Cepat" subtitle="Rujukan ringkas semasa masukkan item.">
               <ul className="tips-list">
-                <li>Panduan pemarkahan wajib diisi bagi item Kertas 2.</li>
+                <li>Untuk Kertas 2, masukkan skema pada setiap sub-soalan.</li>
                 <li>Kertas 1 perlu 4 pilihan jawapan dan satu jawapan betul.</li>
                 <li>Untuk soalan objektif berjadual, letak jadual A-D dalam stem dan guna mode pilihan dalam stem.</li>
-                <li>Kertas 2 perlu pilih Bahagian A, B atau C.</li>
+                <li>Bahagian A Kertas 2 perlu jumlah 5 markah.</li>
                 <li>Guna konstruk dan aras yang konsisten untuk memudahkan carian.</li>
               </ul>
             </Card>
