@@ -49,6 +49,9 @@ type SubQuestionRow = {
   answer_scheme_text: string
   marks: number
   response_type: string
+  main_construct: string | null
+  construct_code: string | null
+  difficulty_level: string | null
   display_order: number
 }
 
@@ -742,8 +745,20 @@ export default function BankSoalanAdmin() {
                           <div key={subQuestion.id} className="preview-subquestion">
                             <div className="preview-subquestion-head">
                               <strong>{formatSubQuestionLabel(subQuestion)}</strong>
-                              <span>{subQuestion.marks} markah</span>
+                              <span>
+                                {subQuestion.response_type === "instruction"
+                                  ? "Arahan"
+                                  : `${subQuestion.marks} markah`}
+                              </span>
                             </div>
+                            {subQuestion.response_type !== "instruction" && (
+                              <div className="bank-item-construct">
+                                Konstruk: {subQuestion.main_construct || "-"}{" "}
+                                {subQuestion.construct_code ? `(${subQuestion.construct_code})` : ""}
+                                {" · "}
+                                Aras: {subQuestion.difficulty_level || "-"}
+                              </div>
+                            )}
                             <div
                               className="preview-html"
                               dangerouslySetInnerHTML={{

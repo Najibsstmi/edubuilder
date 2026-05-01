@@ -69,6 +69,7 @@ type Props = {
   onChange: (val: string) => void
   placeholder?: string
   label?: string
+  showAnswerTemplate?: boolean
 }
 
 export default function RichEditor({
@@ -76,6 +77,7 @@ export default function RichEditor({
   onChange,
   placeholder = "Tulis kandungan di sini...",
   label,
+  showAnswerTemplate = false,
 }: Props) {
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const [uploading, setUploading] = useState(false)
@@ -186,40 +188,64 @@ export default function RichEditor({
   function insertAnswerTableTemplate() {
     if (!editor) return
 
+    const makeCell = (text: string, type = "tableCell") => ({
+      type,
+      content: [
+        {
+          type: "paragraph",
+          content: text ? [{ type: "text", text }] : undefined,
+        },
+      ],
+    })
+
     editor
       .chain()
       .focus()
-      .insertContent(`
-        <table>
-          <tbody>
-            <tr>
-              <th></th>
-              <th>Keadaan</th>
-              <th>Bantuan Kecemasan</th>
-            </tr>
-            <tr>
-              <td>A</td>
-              <td>Mangsa lemas</td>
-              <td>Resusitasi kardiopulmonari</td>
-            </tr>
-            <tr>
-              <td>B</td>
-              <td>Mangsa yang tercekik</td>
-              <td>Resusitasi kardiopulmonari</td>
-            </tr>
-            <tr>
-              <td>C</td>
-              <td>Mangsa panahan petir</td>
-              <td>Heimlich Manoeuvre</td>
-            </tr>
-            <tr>
-              <td>D</td>
-              <td>Mangsa serangan jantung</td>
-              <td>Heimlich Manoeuvre</td>
-            </tr>
-          </tbody>
-        </table>
-      `)
+      .insertContent({
+        type: "table",
+        content: [
+          {
+            type: "tableRow",
+            content: [
+              makeCell("", "tableHeader"),
+              makeCell("", "tableHeader"),
+              makeCell("", "tableHeader"),
+            ],
+          },
+          {
+            type: "tableRow",
+            content: [
+              makeCell("A"),
+              makeCell(""),
+              makeCell(""),
+            ],
+          },
+          {
+            type: "tableRow",
+            content: [
+              makeCell("B"),
+              makeCell(""),
+              makeCell(""),
+            ],
+          },
+          {
+            type: "tableRow",
+            content: [
+              makeCell("C"),
+              makeCell(""),
+              makeCell(""),
+            ],
+          },
+          {
+            type: "tableRow",
+            content: [
+              makeCell("D"),
+              makeCell(""),
+              makeCell(""),
+            ],
+          },
+        ],
+      })
       .run()
   }
 
@@ -368,9 +394,11 @@ export default function RichEditor({
           Table
         </ToolbarButton>
 
-        <ToolbarButton onClick={insertAnswerTableTemplate}>
-          Template A-D
-        </ToolbarButton>
+        {showAnswerTemplate && (
+          <ToolbarButton onClick={insertAnswerTableTemplate}>
+            Template A-D
+          </ToolbarButton>
+        )}
 
         {isInTable && (
           <>
