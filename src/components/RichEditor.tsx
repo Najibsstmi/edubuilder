@@ -115,6 +115,19 @@ export default function RichEditor({
       attributes: {
         class: "rich-editor-content prose prose-slate max-w-none focus:outline-none",
       },
+      handlePaste(_view, event) {
+        const clipboardItems = Array.from(event.clipboardData?.items || [])
+        const imageFiles = clipboardItems
+          .filter((item) => item.kind === "file" && item.type.startsWith("image/"))
+          .map((item) => item.getAsFile())
+          .filter((file): file is File => Boolean(file))
+
+        if (imageFiles.length === 0) return false
+
+        event.preventDefault()
+        void insertImagesFromClipboard(imageFiles)
+        return true
+      },
     },
     immediatelyRender: false,
   })
@@ -132,12 +145,20 @@ export default function RichEditor({
     return editor.isActive("table")
   }, [editor?.state])
 
-  async function handleImageUpload(file: File) {
+  function getImageExtension(file: File) {
+    if (file.name.includes(".")) return file.name.split(".").pop() || "png"
+    if (file.type === "image/jpeg") return "jpg"
+    if (file.type === "image/webp") return "webp"
+    if (file.type === "image/gif") return "gif"
+    return "png"
+  }
+
+  async function handleImageUpload(file: File, altText = file.name || "pasted-image") {
     if (!editor) return
     setUploading(true)
 
     try {
-      const ext = file.name.split(".").pop() || "png"
+      const ext = getImageExtension(file)
       const fileName = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
       const filePath = `editor-images/${fileName}`
 
@@ -156,13 +177,19 @@ export default function RichEditor({
 
       const imageUrl = publicUrlData.publicUrl
 
-      editor.chain().focus().setImage({ src: imageUrl, alt: file.name }).run()
+      editor.chain().focus().setImage({ src: imageUrl, alt: altText }).run()
     } catch (error) {
       console.error(error)
       window.alert("Gagal upload gambar.")
     } finally {
       setUploading(false)
       if (fileInputRef.current) fileInputRef.current.value = ""
+    }
+  }
+
+  async function insertImagesFromClipboard(files: File[]) {
+    for (const file of files) {
+      await handleImageUpload(file, file.name || "pasted-image")
     }
   }
 

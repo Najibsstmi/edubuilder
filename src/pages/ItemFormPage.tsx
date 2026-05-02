@@ -37,6 +37,34 @@ type SubQuestion = {
   difficultyLevel: DifficultyType
 }
 
+type QuestionReferenceOption = {
+  value: string
+  label: string
+  marks: number
+}
+
+const questionReferenceOptionsBySection: Record<Exclude<SectionType, "">, QuestionReferenceOption[]> = {
+  A: [
+    { value: "1", label: "Soalan 1 (5 markah)", marks: 5 },
+    { value: "2", label: "Soalan 2 (5 markah)", marks: 5 },
+    { value: "3", label: "Soalan 3 (5 markah)", marks: 5 },
+    { value: "4", label: "Soalan 4 (5 markah)", marks: 5 },
+  ],
+  B: [
+    { value: "5", label: "Soalan 5 (6 markah)", marks: 6 },
+    { value: "6", label: "Soalan 6 (6 markah)", marks: 6 },
+    { value: "7", label: "Soalan 7 (6 markah)", marks: 6 },
+    { value: "8", label: "Soalan 8 (6 markah)", marks: 6 },
+    { value: "9", label: "Soalan 9 (7 markah)", marks: 7 },
+    { value: "10", label: "Soalan 10 (7 markah)", marks: 7 },
+  ],
+  C: [
+    { value: "11", label: "Soalan 11 (10 markah)", marks: 10 },
+    { value: "12", label: "Soalan 12 (12 markah)", marks: 12 },
+    { value: "13", label: "Soalan 13 (12 markah)", marks: 12 },
+  ],
+}
+
 function SparklesIcon() {
   return (
     <span className="ai-generate-mark" aria-hidden="true">
@@ -65,8 +93,29 @@ const initialOptions: McqOption[] = [
   { label: "D", text: "" },
 ]
 
-const initialSubQuestions: SubQuestion[] = [
-  {
+function createInitialOptions(): McqOption[] {
+  return initialOptions.map((option) => ({ ...option }))
+}
+
+function createInitialSubQuestions(defaultMarks = 1): SubQuestion[] {
+  return [
+    {
+      id: crypto.randomUUID(),
+      label: "a",
+      subLabel: "",
+      questionText: "",
+      answerSchemeText: "",
+      marks: defaultMarks,
+      responseType: "short_text",
+      mainConstruct: "",
+      constructCode: "",
+      difficultyLevel: "sederhana",
+    },
+  ]
+}
+
+function createBlankSubQuestion(overrides: Partial<SubQuestion> = {}): SubQuestion {
+  return {
     id: crypto.randomUUID(),
     label: "a",
     subLabel: "",
@@ -77,8 +126,23 @@ const initialSubQuestions: SubQuestion[] = [
     mainConstruct: "",
     constructCode: "",
     difficultyLevel: "sederhana",
-  },
-]
+    ...overrides,
+  }
+}
+
+function isSingleBlankSubQuestion(items: SubQuestion[]) {
+  if (items.length !== 1) return false
+  const item = items[0]
+
+  return (
+    item.label === "a" &&
+    !item.subLabel &&
+    !item.questionText &&
+    !item.answerSchemeText &&
+    !item.mainConstruct &&
+    !item.constructCode
+  )
+}
 
 const constructGroupOrder = [
   "Pengetahuan (Mengingat)",
@@ -111,6 +175,7 @@ export default function ItemFormPage() {
   const [searchParams] = useSearchParams()
   const editId = searchParams.get("id")
   const [loadingItem, setLoadingItem] = useState(false)
+  const [profileSchoolName, setProfileSchoolName] = useState("")
 
   function isRichContentEmpty(html: string) {
     const stripped = html
@@ -151,12 +216,12 @@ export default function ItemFormPage() {
   const [sourceYear, setSourceYear] = useState("")
   const [sourceSchool, setSourceSchool] = useState("")
   const [status, setStatus] = useState("draft")
-  const [options, setOptions] = useState<McqOption[]>(initialOptions)
+  const [options, setOptions] = useState<McqOption[]>(() => createInitialOptions())
   const [mcqOptionMode, setMcqOptionMode] = useState<McqOptionMode>("separate")
   const [metadataSuggestion, setMetadataSuggestion] = useState("")
   const [suggestingMetadata, setSuggestingMetadata] = useState(false)
   const [generatingSchemeId, setGeneratingSchemeId] = useState<string | null>(null)
-  const [subQuestions, setSubQuestions] = useState<SubQuestion[]>(initialSubQuestions)
+  const [subQuestions, setSubQuestions] = useState<SubQuestion[]>(() => createInitialSubQuestions())
 
   const isPaper1 = paper === "paper_1"
   const isStemOptionMode = isPaper1 && mcqOptionMode === "in_stem"
@@ -181,6 +246,14 @@ export default function ItemFormPage() {
   }, [paper, section])
 
   const selectedPaperLabel = paper === "paper_1" ? "Kertas 1" : "Kertas 2"
+  const authorName = profile?.full_name || profile?.email || "Akaun semasa"
+  const authorAuditText = profileSchoolName ? `${authorName} / ${profileSchoolName}` : authorName
+  const questionReferenceOptions = section ? questionReferenceOptionsBySection[section] : []
+  const selectedQuestionReference = questionReferenceOptions.find(
+    (option) => option.value === questionNoReference,
+  )
+  const expectedFormatMarks = selectedQuestionReference?.marks || 0
+  const displayedItemMarks = isPaper1 ? 1 : expectedFormatMarks || totalSubQuestionMarks
 
   const temaList = Array.from(
     new Set(standards.map((s) => s.theme_name as string))
@@ -238,19 +311,39 @@ export default function ItemFormPage() {
     const nextLabel = String.fromCharCode(97 + subQuestions.length)
     setSubQuestions((prev) => [
       ...prev,
-      {
-        id: crypto.randomUUID(),
+      createBlankSubQuestion({
         label: nextLabel,
-        subLabel: "",
-        questionText: "",
-        answerSchemeText: "",
-        marks: 1,
-        responseType: "short_text",
         mainConstruct: mainConstruct || "",
         constructCode: constructCode || "",
         difficultyLevel,
-      },
+      }),
     ])
+  }
+
+  function handleSectionChange(nextSection: SectionType) {
+    setSection(nextSection)
+    const firstOption = nextSection ? questionReferenceOptionsBySection[nextSection][0] : null
+    const nextMarks = firstOption?.marks || 1
+    setQuestionNoReference(firstOption?.value || "")
+
+    if (isSingleBlankSubQuestion(subQuestions)) {
+      setSubQuestions(createInitialSubQuestions(nextMarks))
+      setMarks(nextMarks)
+      return
+    }
+
+    setMarks(nextMarks)
+  }
+
+  function handleQuestionReferenceChange(nextReference: string) {
+    setQuestionNoReference(nextReference)
+    const option = questionReferenceOptions.find((item) => item.value === nextReference)
+    if (!option) return
+
+    setMarks(option.marks)
+    if (isSingleBlankSubQuestion(subQuestions)) {
+      setSubQuestions(createInitialSubQuestions(option.marks))
+    }
   }
 
   function updateSubQuestion(id: string, patch: Partial<SubQuestion>) {
@@ -752,6 +845,27 @@ export default function ItemFormPage() {
   }, [])
 
   useEffect(() => {
+    async function fetchProfileSchool() {
+      if (!profile?.school_id) {
+        setProfileSchoolName("")
+        return
+      }
+
+      const { data, error } = await supabase
+        .from("schools")
+        .select("school_name")
+        .eq("id", profile.school_id)
+        .maybeSingle()
+
+      if (!error && data?.school_name) {
+        setProfileSchoolName(data.school_name)
+      }
+    }
+
+    void fetchProfileSchool()
+  }, [profile?.school_id])
+
+  useEffect(() => {
     async function fetchStandards() {
       const { data, error } = await supabase
         .from("academic_standards")
@@ -772,6 +886,8 @@ export default function ItemFormPage() {
   useEffect(() => {
     if (editId) {
       void loadItemForEdit(editId)
+    } else {
+      resetForm()
     }
   }, [editId])
 
@@ -840,11 +956,11 @@ export default function ItemFormPage() {
               : "separate",
           )
         } else {
-          setOptions(initialOptions)
+          setOptions(createInitialOptions())
           setMcqOptionMode("separate")
         }
       } else {
-        setOptions(initialOptions)
+        setOptions(createInitialOptions())
         setMcqOptionMode("separate")
 
         const { data: subQuestionData, error: subQuestionError } = await supabase
@@ -855,7 +971,7 @@ export default function ItemFormPage() {
 
         if (subQuestionError) {
           console.warn("Subquestion fetch skipped", subQuestionError)
-          setSubQuestions(initialSubQuestions)
+          setSubQuestions(createInitialSubQuestions())
         } else if (subQuestionData && subQuestionData.length > 0) {
           setSubQuestions(
             subQuestionData.map((row: any) => ({
@@ -873,7 +989,7 @@ export default function ItemFormPage() {
             })),
           )
         } else {
-          setSubQuestions(initialSubQuestions)
+          setSubQuestions(createInitialSubQuestions())
         }
       }
     } catch (error: any) {
@@ -926,6 +1042,11 @@ export default function ItemFormPage() {
         return
       }
 
+      if (!selectedQuestionReference) {
+        setMessage("Sila pilih No. Rujukan Soalan yang sah untuk bahagian ini.")
+        return
+      }
+
       if (subQuestions.length === 0) {
         setMessage("Tambah sekurang-kurangnya satu sub-soalan untuk Kertas 2.")
         return
@@ -953,8 +1074,10 @@ export default function ItemFormPage() {
         return
       }
 
-      if (section === "A" && totalSubQuestionMarks !== 5) {
-        setMessage("Bahagian A mesti berjumlah 5 markah.")
+      if (expectedFormatMarks && totalSubQuestionMarks !== expectedFormatMarks) {
+        setMessage(
+          `Jumlah markah sub-soalan mesti ${expectedFormatMarks} markah untuk Soalan ${questionNoReference}.`,
+        )
         return
       }
     }
@@ -996,7 +1119,7 @@ export default function ItemFormPage() {
           !isPaper1 && questionNoReference.trim() ? questionNoReference.trim() : null,
 
         item_type: isPaper1 ? "mcq" : itemType,
-        marks: isPaper1 ? 1 : totalSubQuestionMarks,
+        marks: isPaper1 ? 1 : expectedFormatMarks || totalSubQuestionMarks,
 
         theme_name: selectedTema || null,
         bidang_learning_code: selectedBidangObj?.code || null,
@@ -1024,7 +1147,7 @@ export default function ItemFormPage() {
         source_type: sourceType || null,
         source_reference: sourceReference || null,
         source_year: sourceYear ? Number(sourceYear) : null,
-        source_school: sourceSchool || null,
+        source_school: sourceSchool || profileSchoolName || null,
 
         status,
       }
@@ -1132,9 +1255,11 @@ export default function ItemFormPage() {
         }
       }
 
-      setMessage(editId ? "Soalan berjaya dikemaskini." : "Soalan berjaya disimpan.")
       if (!editId) {
-        resetForm()
+        prepareNextQuestionForm()
+        setMessage("Soalan berjaya disimpan. Borang baharu disediakan untuk soalan seterusnya.")
+      } else {
+        setMessage("Soalan berjaya dikemaskini.")
       }
     } catch (error: any) {
       console.error(error)
@@ -1144,9 +1269,29 @@ export default function ItemFormPage() {
     }
   }
 
-  function resetForm() {
+  function clearQuestionContent() {
     setItemCode("")
     setQuestionNoReference("")
+    setMarks(1)
+    setQuestionInstruction("")
+    setStemText("")
+    setAnswerSchemeText("")
+    setAnswerFinal("")
+    setExplanationText("")
+    setStatus("draft")
+    setOptions(createInitialOptions())
+    setMcqOptionMode("separate")
+    setSubQuestions(createInitialSubQuestions())
+  }
+
+  function prepareNextQuestionForm() {
+    clearQuestionContent()
+    setMetadataSuggestion("")
+    window.scrollTo({ top: 0, behavior: "smooth" })
+  }
+
+  function resetForm() {
+    clearQuestionContent()
     setSelectedTema("")
     setSelectedBidangCode("")
     setSelectedSKCode("")
@@ -1154,24 +1299,16 @@ export default function ItemFormPage() {
     setMainConstruct("")
     setConstructCode("")
     setDifficultyLevel("sederhana")
-    setMarks(1)
     setStimulusType("text")
-    setQuestionInstruction("")
-    setStemText("")
-    setAnswerSchemeText("")
-    setAnswerFinal("")
-    setExplanationText("")
     setSourceType("")
     setSourceReference("")
     setSourceYear("")
     setSourceSchool("")
-    setStatus("draft")
-    setOptions(initialOptions)
-    setMcqOptionMode("separate")
-    setSubQuestions(initialSubQuestions)
     setPaper("paper_1")
     setSection("")
     setTingkatan(4)
+    setMetadataSuggestion("")
+    setMessage("")
   }
 
   if (loadingItem) {
@@ -1213,6 +1350,7 @@ export default function ItemFormPage() {
           onClick={() => {
             setPaper("paper_1")
             setSection("")
+            setQuestionNoReference("")
             setAnswerFinal("")
             setMarks(1)
           }}
@@ -1225,7 +1363,17 @@ export default function ItemFormPage() {
           className={`paper-tab ${paper === "paper_2" ? "active" : ""}`}
           onClick={() => {
             setPaper("paper_2")
-            setMarks(totalSubQuestionMarks || 5)
+            if (!section) {
+              handleSectionChange("A")
+              return
+            }
+
+            if (section === "A" && isSingleBlankSubQuestion(subQuestions)) {
+              setSubQuestions(createInitialSubQuestions(5))
+              setMarks(5)
+            } else {
+              setMarks(totalSubQuestionMarks || 5)
+            }
           }}
         >
           Kertas 2 Subjektif
@@ -1264,7 +1412,7 @@ export default function ItemFormPage() {
                   <Field label="Bahagian">
                     <select
                       value={section}
-                      onChange={(e) => setSection(e.target.value as SectionType)}
+                      onChange={(e) => handleSectionChange(e.target.value as SectionType)}
                       className="input"
                     >
                       <option value="">Pilih bahagian</option>
@@ -1278,7 +1426,7 @@ export default function ItemFormPage() {
                 <Field label="Markah">
                   <input
                     type="number"
-                    value={isPaper1 ? 1 : totalSubQuestionMarks}
+                    value={displayedItemMarks}
                     onChange={(e) => setMarks(Number(e.target.value))}
                     className="input"
                     min={1}
@@ -1288,12 +1436,19 @@ export default function ItemFormPage() {
 
                 {!isPaper1 && (
                   <Field label="No. Rujukan Soalan">
-                    <input
+                    <select
                       value={questionNoReference}
-                      onChange={(e) => setQuestionNoReference(e.target.value)}
+                      onChange={(e) => handleQuestionReferenceChange(e.target.value)}
                       className="input"
-                      placeholder="Contoh: 5 / 6 / 11 / 12"
-                    />
+                      disabled={!section}
+                    >
+                      <option value="">Pilih no. soalan</option>
+                      {questionReferenceOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
                   </Field>
                 )}
 
@@ -1415,9 +1570,10 @@ export default function ItemFormPage() {
                       </div>
                     </div>
 
-                    {section === "A" && totalSubQuestionMarks !== 5 && (
+                    {expectedFormatMarks > 0 && totalSubQuestionMarks !== expectedFormatMarks && (
                       <div className="metadata-ai-message">
-                        Bahagian A perlu tepat 5 markah. Jumlah semasa: {totalSubQuestionMarks} markah.
+                        Soalan {questionNoReference || "ini"} perlu tepat {expectedFormatMarks} markah.
+                        Jumlah semasa: {totalSubQuestionMarks} markah.
                       </div>
                     )}
 
@@ -1844,24 +2000,15 @@ export default function ItemFormPage() {
 
             <Card
               title="Sumber Item"
-              subtitle="Maklumat asal item untuk rujukan dan audit."
+              subtitle="Sumber dan tahun rujukan. Penggubal direkod automatik melalui akaun login."
             >
-              <div className="form-grid form-grid-4">
+              <div className="form-grid source-item-grid">
                 <Field label="Sumber">
                   <input
                     value={sourceType}
                     onChange={(e) => setSourceType(e.target.value)}
                     className="input"
-                    placeholder="trial_exam / teacher_original"
-                  />
-                </Field>
-
-                <Field label="Rujukan Sumber">
-                  <input
-                    value={sourceReference}
-                    onChange={(e) => setSourceReference(e.target.value)}
-                    className="input"
-                    placeholder="Contoh: Percubaan Johor"
+                    placeholder="Contoh: Trial / Original / Buku teks"
                   />
                 </Field>
 
@@ -1870,17 +2017,15 @@ export default function ItemFormPage() {
                     value={sourceYear}
                     onChange={(e) => setSourceYear(e.target.value)}
                     className="input"
-                    placeholder="2025"
+                    placeholder="2026"
                   />
                 </Field>
 
-                <Field label="Sekolah / Penerbit">
-                  <input
-                    value={sourceSchool}
-                    onChange={(e) => setSourceSchool(e.target.value)}
-                    className="input"
-                    placeholder="Nama sekolah"
-                  />
+                <Field label="Penggubal Item">
+                  <div className="source-author-card">
+                    <span>Penggubal:</span>
+                    <strong>{authorAuditText}</strong>
+                  </div>
                 </Field>
               </div>
             </Card>
@@ -1894,7 +2039,7 @@ export default function ItemFormPage() {
                 <PreviewRow label="Tingkatan" value={`Tingkatan ${tingkatan}`} />
                 <PreviewRow label="Bahagian" value={section || "-"} />
                 <PreviewRow label="Jenis Item" value={itemType} />
-                <PreviewRow label="Markah" value={String(isPaper1 ? 1 : totalSubQuestionMarks)} />
+                <PreviewRow label="Markah" value={String(displayedItemMarks)} />
                 <PreviewRow
                   label="Bidang"
                   value={

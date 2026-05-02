@@ -6,12 +6,15 @@ import ProtectedMaster from './components/ProtectedMaster';
 import ProtectedAdmin from './components/ProtectedAdmin';
 import { LoginPage } from './pages/LoginPage';
 import { SignupPage } from './pages/SignupPage';
+import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
+import { ResetPasswordPage } from './pages/ResetPasswordPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { MasterAdminUsersPage } from './pages/MasterAdminUsersPage';
 import MasterAdminDashboard from './pages/MasterAdminDashboard';
 import ItemFormPage from './pages/ItemFormPage';
 import BankSoalanAdmin from './pages/BankSoalanAdmin';
 import BuilderSetSoalan from './pages/BuilderSetSoalan';
+import MyProfilePage from './pages/MyProfilePage';
 
 export default function App() {
   const { loading } = useAuth();
@@ -24,6 +27,8 @@ export default function App() {
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/signup" element={<SignupPage />} />
+      <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+      <Route path="/reset-password" element={<ResetPasswordPage />} />
       <Route
         path="/"
         element={
@@ -33,6 +38,7 @@ export default function App() {
         }
       >
         <Route index element={<DashboardPage />} />
+        <Route path="profil-saya" element={<MyProfilePage />} />
         <Route
           path="master-admin"
           element={

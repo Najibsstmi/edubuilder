@@ -39,6 +39,9 @@ export function LoginPage() {
           Kata laluan
           <input value={password} onChange={(e) => setPassword(e.target.value)} type="password" required />
         </label>
+        <p className="auth-helper">
+          <Link to="/forgot-password">Lupa kata laluan?</Link>
+        </p>
         {error && <p className="error-text">{error}</p>}
         <button className="primary-btn" disabled={loading}>{loading ? 'Sedang login...' : 'Login'}</button>
         <p className="muted">Belum ada akaun? <Link to="/signup">Daftar di sini</Link></p>
