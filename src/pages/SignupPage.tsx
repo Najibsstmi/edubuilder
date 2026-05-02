@@ -3,52 +3,6 @@ import { Link, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import type { School } from '../types';
 
-async function applyPostSignupLogic(userId: string, fullName: string, email: string, schoolId: string, school: School) {
-  const { count, error: countError } = await supabase
-    .from('profiles')
-    .select('*', { count: 'exact', head: true })
-    .eq('school_id', schoolId)
-    .eq('role', 'admin')
-    .eq('status', 'active');
-
-  if (countError) throw countError;
-
-  const firstAdminForSchool = !count || count === 0;
-  const payload = firstAdminForSchool
-    ? {
-        id: userId,
-        full_name: fullName,
-        email,
-        role: 'admin' as const,
-        status: 'active' as const,
-        account_type: 'full' as const,
-        school_id: schoolId,
-        state_name: school.state_name,
-        ppd_name: school.ppd_name,
-        school_type: school.school_type,
-      }
-    : {
-        id: userId,
-        full_name: fullName,
-        email,
-        role: 'user' as const,
-        status: 'pending' as const,
-        account_type: 'free' as const,
-        school_id: schoolId,
-        state_name: school.state_name,
-        ppd_name: school.ppd_name,
-        school_type: school.school_type,
-      };
-
-  const { error: insertError } = await supabase.from('profiles').insert(payload);
-  if (!insertError) return;
-
-  // Jika row profile telah diwujudkan oleh trigger auth, fallback ke update.
-  if (insertError.code !== '23505') throw insertError;
-  const { error: updateError } = await supabase.from('profiles').update(payload).eq('id', userId);
-  if (updateError) throw updateError;
-}
-
 export function SignupPage() {
   const navigate = useNavigate();
   const [schools, setSchools] = useState<School[]>([]);
@@ -110,29 +64,29 @@ export function SignupPage() {
       return;
     }
 
-    const { data, error: signUpError } = await supabase.auth.signUp({
+    const { error: signUpError } = await supabase.auth.signUp({
       email,
       password,
       options: {
-        data: { full_name: fullName },
+        data: {
+          full_name: fullName.trim(),
+          school_id: selectedSchool.id,
+          state_name: selectedSchool.state_name,
+          ppd_name: selectedSchool.ppd_name,
+          school_type: selectedSchool.school_type,
+        },
       },
     });
 
-    if (signUpError || !data.user) {
-      setLoading(false);
-      setError(signUpError?.message || 'Signup gagal.');
+    setLoading(false);
+
+    if (signUpError) {
+      console.error(signUpError);
+      setError(signUpError.message || 'Signup gagal.');
       return;
     }
 
-    try {
-      await applyPostSignupLogic(data.user.id, fullName, email, selectedSchool.id, selectedSchool);
-      navigate('/login');
-    } catch (signupLogicError) {
-      console.error(signupLogicError);
-      setError('Akaun berjaya dicipta tetapi gagal lengkapkan profil. Semak RLS atau profile table.');
-    } finally {
-      setLoading(false);
-    }
+    navigate('/login');
   };
 
   return (
