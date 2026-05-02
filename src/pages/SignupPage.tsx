@@ -3,6 +3,25 @@ import { Link, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import type { School } from '../types';
 
+function getSignupErrorMessage(message = '') {
+  const normalized = message.toLowerCase();
+
+  if (
+    normalized.includes('already') ||
+    normalized.includes('registered') ||
+    normalized.includes('exists') ||
+    normalized.includes('user already')
+  ) {
+    return 'Email ini sudah berdaftar. Sila log masuk atau guna Lupa kata laluan.';
+  }
+
+  if (normalized.includes('rate limit')) {
+    return 'Terlalu banyak percubaan daftar. Sila cuba semula sebentar lagi.';
+  }
+
+  return message || 'Signup gagal. Sila semak maklumat dan cuba semula.';
+}
+
 export function SignupPage() {
   const navigate = useNavigate();
   const [schools, setSchools] = useState<School[]>([]);
@@ -82,7 +101,7 @@ export function SignupPage() {
 
     if (signUpError) {
       console.error(signUpError);
-      setError(signUpError.message || 'Signup gagal.');
+      setError(getSignupErrorMessage(signUpError.message));
       return;
     }
 

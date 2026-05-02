@@ -246,18 +246,21 @@ export default function BankSoalanAdmin() {
     setDeletingId(id)
     setMessage("")
 
-    const { error } = await supabase
-      .from("items")
-      .delete()
-      .eq("id", id)
+    try {
+      const { error } = await supabase.rpc("delete_item_cascade", {
+        target_item_id: id,
+      })
 
-    if (error) {
-      console.error(error)
-      setMessage("Gagal memadam item.")
-    } else {
+      if (error) {
+        throw new Error(error.message)
+      }
+
       setItems((prev) => prev.filter((item) => item.id !== id))
       if (previewItem?.id === id) setPreviewItem(null)
       setMessage("Item berjaya dipadam.")
+    } catch (error: any) {
+      console.error(error)
+      setMessage(error.message || "Gagal memadam item.")
     }
 
     setDeletingId(null)

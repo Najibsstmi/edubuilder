@@ -97,7 +97,7 @@ function createInitialOptions(): McqOption[] {
   return initialOptions.map((option) => ({ ...option }))
 }
 
-function createInitialSubQuestions(defaultMarks = 1): SubQuestion[] {
+function createInitialSubQuestions(): SubQuestion[] {
   return [
     {
       id: crypto.randomUUID(),
@@ -105,7 +105,7 @@ function createInitialSubQuestions(defaultMarks = 1): SubQuestion[] {
       subLabel: "",
       questionText: "",
       answerSchemeText: "",
-      marks: defaultMarks,
+      marks: 1,
       responseType: "short_text",
       mainConstruct: "",
       constructCode: "",
@@ -128,20 +128,6 @@ function createBlankSubQuestion(overrides: Partial<SubQuestion> = {}): SubQuesti
     difficultyLevel: "sederhana",
     ...overrides,
   }
-}
-
-function isSingleBlankSubQuestion(items: SubQuestion[]) {
-  if (items.length !== 1) return false
-  const item = items[0]
-
-  return (
-    item.label === "a" &&
-    !item.subLabel &&
-    !item.questionText &&
-    !item.answerSchemeText &&
-    !item.mainConstruct &&
-    !item.constructCode
-  )
 }
 
 const constructGroupOrder = [
@@ -326,12 +312,6 @@ export default function ItemFormPage() {
     const nextMarks = firstOption?.marks || 1
     setQuestionNoReference(firstOption?.value || "")
 
-    if (isSingleBlankSubQuestion(subQuestions)) {
-      setSubQuestions(createInitialSubQuestions(nextMarks))
-      setMarks(nextMarks)
-      return
-    }
-
     setMarks(nextMarks)
   }
 
@@ -341,9 +321,6 @@ export default function ItemFormPage() {
     if (!option) return
 
     setMarks(option.marks)
-    if (isSingleBlankSubQuestion(subQuestions)) {
-      setSubQuestions(createInitialSubQuestions(option.marks))
-    }
   }
 
   function updateSubQuestion(id: string, patch: Partial<SubQuestion>) {
@@ -1368,12 +1345,7 @@ export default function ItemFormPage() {
               return
             }
 
-            if (section === "A" && isSingleBlankSubQuestion(subQuestions)) {
-              setSubQuestions(createInitialSubQuestions(5))
-              setMarks(5)
-            } else {
-              setMarks(totalSubQuestionMarks || 5)
-            }
+            setMarks(expectedFormatMarks || 5)
           }}
         >
           Kertas 2 Subjektif
