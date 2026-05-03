@@ -552,7 +552,22 @@
   display: grid;
   grid-template-columns: minmax(0, 1.4fr) minmax(320px, 0.9fr);
   gap: 20px;
+  height: calc(100vh - 340px);
+  min-height: 520px;
   margin-top: 20px;
+  overflow: hidden;
+}
+
+.bank-list-panel,
+.bank-preview-panel {
+  height: 100%;
+  min-height: 0;
+}
+
+.bank-list-panel {
+  overflow-y: auto;
+  padding-right: 8px;
+  scrollbar-gutter: stable;
 }
 
 .bank-card-list {
@@ -650,8 +665,10 @@
 }
 
 .bank-preview-panel .sticky-preview {
-  position: sticky;
-  top: 20px;
+  height: 100%;
+  overflow-y: auto;
+  position: static;
+  scrollbar-gutter: stable;
 }
 
 .preview-detail {
@@ -848,6 +865,16 @@
 @media (max-width: 1200px) {
   .bank-layout {
     grid-template-columns: 1fr;
+    height: auto;
+    min-height: 0;
+    overflow: visible;
+  }
+
+  .bank-list-panel,
+  .bank-preview-panel,
+  .bank-preview-panel .sticky-preview {
+    height: auto;
+    overflow: visible;
   }
 
   .stats-grid {

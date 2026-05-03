@@ -39,7 +39,6 @@ const optionLabels = ["A", "B", "C", "D"] as const
 
 export default function BulkImportPage() {
   const { profile } = useAuth()
-  const [tingkatan, setTingkatan] = useState<4 | 5>(4)
   const [languageMode, setLanguageMode] = useState<"bm_only" | "bm_bi">("bm_only")
   const [sourceType, setSourceType] = useState("Import pukal")
   const [sourceYear, setSourceYear] = useState(new Date().getFullYear())
@@ -96,29 +95,38 @@ export default function BulkImportPage() {
     }
 
     setParsing(true)
-    const { data, error } = await supabase.functions.invoke("parse-bulk-items", {
-      body: {
-        tingkatan,
-        languageMode,
-        rawText,
-      },
-    })
-    setParsing(false)
 
-    if (error) {
-      console.error("Bulk parse error", error)
-      setMessage(await getFunctionErrorMessage(error))
-      return
-    }
+    try {
+      const batches = splitQuestionBatches(rawText, 5)
+      const allItems: any[] = []
 
-    if (data?.error) {
-      setMessage(data.error)
-      return
-    }
+      for (let batchIndex = 0; batchIndex < batches.length; batchIndex += 1) {
+        setMessage(`AI memproses batch ${batchIndex + 1}/${batches.length}...`)
+        const { data, error } = await supabase.functions.invoke("parse-bulk-items", {
+          body: {
+            languageMode,
+            rawText: batches[batchIndex],
+            batchIndex,
+            batchCount: batches.length,
+          },
+        })
 
-    const items = Array.isArray(data?.items) ? data.items : []
-    setDraftItems(
-      items.map((item: any, index: number) => ({
+        if (error) {
+          console.error("Bulk parse error", error)
+          setMessage(await getFunctionErrorMessage(error))
+          return
+        }
+
+        if (data?.error) {
+          setMessage(data.error)
+          return
+        }
+
+        allItems.push(...(Array.isArray(data?.items) ? data.items : []))
+      }
+
+      setDraftItems(
+        allItems.map((item: any, index: number) => ({
         id: crypto.randomUUID(),
         questionNo: item.questionNo || String(index + 1),
         stem: item.stem || "",
@@ -130,11 +138,14 @@ export default function BulkImportPage() {
         },
         answer: item.answer || "",
         imageRefs: Array.isArray(item.imageRefs) ? item.imageRefs : [],
-        ...mapMetadata(item.metadata, tingkatan),
+        ...mapMetadata(item.metadata),
         selected: true,
       })),
-    )
-    setMessage(data?.quota?.remainingText || `${items.length} draft item dijana. Sila semak sebelum import.`)
+      )
+      setMessage(`${allItems.length} draft item dijana. Sila semak sebelum import.`)
+    } finally {
+      setParsing(false)
+    }
   }
 
   function updateDraft(id: string, patch: Partial<DraftItem>) {
@@ -269,13 +280,7 @@ export default function BulkImportPage() {
             <p>Untuk fasa pertama, gunakan teks daripada PDF/Word yang disalin.</p>
           </div>
 
-          <div className="form-grid form-grid-4">
-            <Field label="Tingkatan fallback">
-              <select className="input" value={tingkatan} onChange={(event) => setTingkatan(Number(event.target.value) as 4 | 5)}>
-                <option value={4}>Tingkatan 4</option>
-                <option value={5}>Tingkatan 5</option>
-              </select>
-            </Field>
+          <div className="bulk-source-row">
             <Field label="Sumber">
               <input className="input" value={sourceType} onChange={(event) => setSourceType(event.target.value)} />
             </Field>
@@ -292,12 +297,11 @@ export default function BulkImportPage() {
                 <option value="bm_bi">Kekalkan BM + BI</option>
               </select>
             </Field>
-          </div>
-
-          <div className="bulk-import-actions">
-            <button type="button" className="btn btn-primary" onClick={() => void parseWithAi()} disabled={parsing}>
-              {parsing ? "AI memproses..." : "AI Pecahkan Soalan"}
-            </button>
+            <div className="bulk-import-actions">
+              <button type="button" className="btn btn-primary" onClick={() => void parseWithAi()} disabled={parsing}>
+                {parsing ? "AI memproses..." : "AI Pecahkan Soalan"}
+              </button>
+            </div>
           </div>
 
           <div className="bulk-file-box">
@@ -340,7 +344,7 @@ export default function BulkImportPage() {
           <div className="card-head builder-card-head-row">
             <div>
               <h2>Draft Import</h2>
-              <p>Semak item, tingkatan dan metadata cadangan AI sebelum masuk ke bank soalan.</p>
+              <p>Semak kandungan item sahaja. Metadata AI akan disimpan dan disemak semasa proses pengesahan.</p>
             </div>
             <button
               type="button"
@@ -380,16 +384,6 @@ export default function BulkImportPage() {
                         onChange={(event) => updateDraft(item.id, { questionNo: event.target.value })}
                       />
                     </Field>
-                    <Field label="Tingkatan AI">
-                      <select
-                        className="input"
-                        value={item.tingkatan}
-                        onChange={(event) => updateDraft(item.id, { tingkatan: Number(event.target.value) as 4 | 5 })}
-                      >
-                        <option value={4}>Tingkatan 4</option>
-                        <option value={5}>Tingkatan 5</option>
-                      </select>
-                    </Field>
                     <Field label="Jawapan Betul">
                       <select
                         className="input"
@@ -402,72 +396,6 @@ export default function BulkImportPage() {
                             {label}
                           </option>
                         ))}
-                      </select>
-                    </Field>
-                  </div>
-
-                  <div className="bulk-metadata-grid">
-                    <Field label="Tema">
-                      <input className="input" value={item.themeName} onChange={(event) => updateDraft(item.id, { themeName: event.target.value })} />
-                    </Field>
-                    <Field label="Bidang">
-                      <input
-                        className="input"
-                        value={formatCodeName(item.bidangCode, item.bidangName)}
-                        onChange={(event) => {
-                          const parsed = splitCodeName(event.target.value)
-                          updateDraft(item.id, { bidangCode: parsed.code, bidangName: parsed.name })
-                        }}
-                      />
-                    </Field>
-                    <Field label="SK">
-                      <input
-                        className="input"
-                        value={formatCodeName(item.standardKandungan, item.standardKandunganName)}
-                        onChange={(event) => {
-                          const parsed = splitCodeName(event.target.value)
-                          updateDraft(item.id, { standardKandungan: parsed.code, standardKandunganName: parsed.name })
-                        }}
-                      />
-                    </Field>
-                    <Field label="SP">
-                      <input
-                        className="input"
-                        value={formatCodeName(item.standardPembelajaran, item.standardPembelajaranName)}
-                        onChange={(event) => {
-                          const parsed = splitCodeName(event.target.value)
-                          updateDraft(item.id, { standardPembelajaran: parsed.code, standardPembelajaranName: parsed.name })
-                        }}
-                      />
-                    </Field>
-                    <Field label="Konstruk">
-                      <input
-                        className="input"
-                        value={item.mainConstruct}
-                        onChange={(event) => updateDraft(item.id, { mainConstruct: event.target.value })}
-                      />
-                    </Field>
-                    <Field label="Kod Konstruk">
-                      <input
-                        className="input"
-                        value={formatCodeName(item.constructCode, item.constructAspect)}
-                        onChange={(event) => {
-                          const parsed = splitCodeName(event.target.value)
-                          updateDraft(item.id, { constructCode: parsed.code, constructAspect: parsed.name })
-                        }}
-                      />
-                    </Field>
-                    <Field label="Aras">
-                      <select
-                        className="input"
-                        value={item.difficultyLevel}
-                        onChange={(event) =>
-                          updateDraft(item.id, { difficultyLevel: event.target.value as DraftItem["difficultyLevel"] })
-                        }
-                      >
-                        <option value="rendah">rendah</option>
-                        <option value="sederhana">sederhana</option>
-                        <option value="tinggi">tinggi</option>
                       </select>
                     </Field>
                   </div>
@@ -533,7 +461,29 @@ function generateItemCode(tingkatan: 4 | 5) {
   return `SCI-K1-T${tingkatan}-AI${random}`
 }
 
-function mapMetadata(metadata: any, fallbackTingkatan: 4 | 5): Pick<
+function splitQuestionBatches(text: string, batchSize = 5) {
+  const normalized = text.replace(/\r/g, "\n").trim()
+  const matches = Array.from(normalized.matchAll(/(?:^|\n)\s*(\d{1,2})[\).]?\s+/g))
+
+  if (matches.length < 2) return [normalized]
+
+  const blocks = matches
+    .map((match, index) => {
+      const start = match.index || 0
+      const end = matches[index + 1]?.index || normalized.length
+      return normalized.slice(start, end).trim()
+    })
+    .filter(Boolean)
+
+  const batches: string[] = []
+  for (let i = 0; i < blocks.length; i += batchSize) {
+    batches.push(blocks.slice(i, i + batchSize).join("\n\n"))
+  }
+
+  return batches
+}
+
+function mapMetadata(metadata: any): Pick<
   DraftItem,
   | "tingkatan"
   | "themeName"
@@ -549,7 +499,7 @@ function mapMetadata(metadata: any, fallbackTingkatan: 4 | 5): Pick<
   | "difficultyLevel"
 > {
   return {
-    tingkatan: metadata?.tingkatan === 5 ? 5 : metadata?.tingkatan === 4 ? 4 : fallbackTingkatan,
+    tingkatan: metadata?.tingkatan === 5 ? 5 : 4,
     themeName: metadata?.theme_name || "",
     bidangCode: metadata?.bidang_learning_code || "",
     bidangName: metadata?.bidang_learning_name || "",
@@ -566,23 +516,6 @@ function mapMetadata(metadata: any, fallbackTingkatan: 4 | 5): Pick<
 
 function normalizeDifficulty(value: unknown): DraftItem["difficultyLevel"] {
   return value === "rendah" || value === "tinggi" || value === "sederhana" ? value : "sederhana"
-}
-
-function formatCodeName(code: string, name: string) {
-  if (code && name) return `${code} : ${name}`
-  return code || name || ""
-}
-
-function splitCodeName(value: string) {
-  const [code, ...nameParts] = value.split(/\s*:\s*/)
-  if (nameParts.length === 0) {
-    return { code: value.trim(), name: "" }
-  }
-
-  return {
-    code: code.trim(),
-    name: nameParts.join(" : ").trim(),
-  }
 }
 
 async function extractDocx(file: File) {

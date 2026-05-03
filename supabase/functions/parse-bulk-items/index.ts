@@ -63,7 +63,7 @@ Tugas: pecahkan teks mentah kepada item objektif Kertas 1 dan cadangkan metadata
 Konteks:
 - Subjek: Sains KSSM SPM 1511
 - Kertas: Kertas 1
-- Tingkatan sasaran/fallback: ${payload.tingkatan || "-"}
+- Fail import boleh mengandungi campuran soalan Tingkatan 4 dan Tingkatan 5.
 - Tetapan bahasa: ${payload.languageMode === "bm_only" ? "Bahasa Melayu sahaja" : "Kekalkan Bahasa Melayu dan Bahasa Inggeris"}
 
 Peraturan penting:
@@ -78,12 +78,13 @@ Peraturan penting:
 - Jangan buang istilah, simbol, label rajah, unit, nama bahan atau perkataan Inggeris yang memang sebahagian kandungan sains.
 - Jika terdapat marker gambar seperti [IMAGE_1], [IMAGE_2], masukkan marker berkaitan dalam array "imageRefs".
 - Padankan marker gambar kepada soalan paling hampir berdasarkan kedudukan marker dalam teks.
-- Cadangkan tingkatan berdasarkan topik soalan. Jika tidak pasti, guna tingkatan fallback.
+- Tentukan tingkatan setiap soalan berdasarkan topik, istilah, DSKP dan konteks soalan.
+- Jika topik sangat tidak jelas, pilih tingkatan paling hampir daripada katalog DSKP.
 - Metadata akademik mesti dipilih daripada katalog DSKP yang diberi. Jangan reka kod baharu.
 - Konstruk mesti dipilih daripada katalog konstruk yang diberi. Jangan reka kod baharu.
 - Jika tidak pasti konstruk, gunakan konstruk paling hampir.
 - Aras kesukaran mestilah "rendah", "sederhana" atau "tinggi".
-- Jika dokumen terlalu panjang, ambil maksimum 30 item pertama yang lengkap sahaja.
+- Proses semua item objektif lengkap yang wujud dalam batch teks ini.
 
 Katalog DSKP:
 ${standardCatalog}
@@ -186,18 +187,18 @@ function normalizeDifficulty(value: unknown) {
   return ["rendah", "sederhana", "tinggi"].includes(difficulty) ? difficulty : "sederhana"
 }
 
-function normalizeTingkatan(value: unknown, fallback: number) {
+function normalizeTingkatan(value: unknown) {
   const tingkatan = Number(value)
   if (tingkatan === 4 || tingkatan === 5) return tingkatan
-  return fallback === 5 ? 5 : 4
+  return 4
 }
 
-function findBestStandard(metadata: any, standards: AcademicStandard[], fallbackTingkatan: number) {
+function findBestStandard(metadata: any, standards: AcademicStandard[]) {
   const spCode = normalizeText(metadata.standard_pembelajaran)
   const skCode = normalizeText(metadata.standard_kandungan)
   const bidangCode = normalizeText(metadata.bidang_learning_code)
   const themeName = normalizeText(metadata.theme_name).toLowerCase()
-  const tingkatan = normalizeTingkatan(metadata.tingkatan, fallbackTingkatan)
+  const tingkatan = normalizeTingkatan(metadata.tingkatan)
 
   return (
     standards.find((row) => row.standard_pembelajaran_code === spCode) ||
@@ -223,15 +224,14 @@ function findBestConstruct(metadata: any, constructs: Construct[]) {
 
 function normalizeMetadata(
   metadata: any,
-  fallbackTingkatan: number,
   standards: AcademicStandard[],
   constructs: Construct[],
 ) {
-  const standard = findBestStandard(metadata, standards, fallbackTingkatan)
+  const standard = findBestStandard(metadata, standards)
   const construct = findBestConstruct(metadata, constructs)
 
   return {
-    tingkatan: standard?.tingkatan || normalizeTingkatan(metadata.tingkatan, fallbackTingkatan),
+    tingkatan: standard?.tingkatan || normalizeTingkatan(metadata.tingkatan),
     theme_name: standard?.theme_name || normalizeText(metadata.theme_name),
     bidang_learning_code: standard?.bidang_code || normalizeText(metadata.bidang_learning_code),
     bidang_learning_name: standard?.bidang_name || normalizeText(metadata.bidang_learning_name),
@@ -243,6 +243,108 @@ function normalizeMetadata(
     construct_code: construct?.construct_code || normalizeText(metadata.construct_code),
     construct_aspect: construct?.aspect_name || "",
     difficulty_level: normalizeDifficulty(metadata.difficulty_level),
+  }
+}
+
+async function callOpenAi(openAiKey: string, payload: any, standards: AcademicStandard[], constructs: Construct[]) {
+  const requestBody = {
+    model: "gpt-4o-mini",
+    input: buildPrompt(payload, standards, constructs),
+    max_output_tokens: 6000,
+    temperature: 0.1,
+    text: {
+      format: {
+        type: "json_schema",
+        name: "bulk_import_items",
+        strict: true,
+        schema: itemSchema,
+      },
+    },
+  }
+
+  const openAiResponse = await fetch("https://api.openai.com/v1/responses", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${openAiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(requestBody),
+  })
+
+  const openAiJson = await openAiResponse.json()
+  if (!openAiResponse.ok) {
+    console.error("OpenAI error", openAiJson)
+    throw new Error("Gagal panggil OpenAI.")
+  }
+
+  const outputText =
+    openAiJson.output_text ||
+    openAiJson.output?.flatMap((item: any) => item.content || [])
+      ?.map((content: any) => content.text || "")
+      ?.join("\n")
+      ?.trim()
+
+  if (!outputText) throw new Error("AI tidak memulangkan output.")
+
+  try {
+    return {
+      parsed: extractJson(outputText),
+      tokensUsed: (openAiJson.usage?.input_tokens || 0) + (openAiJson.usage?.output_tokens || 0),
+      usage: openAiJson.usage || null,
+    }
+  } catch (error) {
+    console.error("Structured JSON parse failed, retrying loose JSON", error)
+    return callOpenAiLoose(openAiKey, payload, standards, constructs, openAiJson.usage || null)
+  }
+}
+
+async function callOpenAiLoose(
+  openAiKey: string,
+  payload: any,
+  standards: AcademicStandard[],
+  constructs: Construct[],
+  firstUsage: any,
+) {
+  const openAiResponse = await fetch("https://api.openai.com/v1/responses", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${openAiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: "gpt-4o-mini",
+      input: `${buildPrompt(payload, standards, constructs)}
+
+Pulangkan JSON sahaja dalam bentuk:
+{"items":[{"questionNo":"","stem":"","options":{"A":"","B":"","C":"","D":""},"answer":"","imageRefs":[],"metadata":{"tingkatan":4,"theme_name":"","bidang_learning_code":"","bidang_learning_name":"","standard_kandungan":"","standard_pembelajaran":"","main_construct":"","construct_code":"","difficulty_level":"sederhana"}}]}
+Jangan tambah markdown atau teks lain.`,
+      max_output_tokens: 5000,
+      temperature: 0,
+    }),
+  })
+
+  const openAiJson = await openAiResponse.json()
+  if (!openAiResponse.ok) {
+    console.error("OpenAI loose retry error", openAiJson)
+    throw new Error("Gagal panggil OpenAI.")
+  }
+
+  const outputText =
+    openAiJson.output_text ||
+    openAiJson.output?.flatMap((item: any) => item.content || [])
+      ?.map((content: any) => content.text || "")
+      ?.join("\n")
+      ?.trim()
+
+  if (!outputText) throw new Error("AI tidak memulangkan output.")
+
+  const firstTokens = (firstUsage?.input_tokens || 0) + (firstUsage?.output_tokens || 0)
+  const retryTokens = (openAiJson.usage?.input_tokens || 0) + (openAiJson.usage?.output_tokens || 0)
+
+  return {
+    parsed: extractJson(outputText),
+    tokensUsed: firstTokens + retryTokens,
+    usage: { firstAttempt: firstUsage, retry: openAiJson.usage || null },
   }
 }
 
@@ -327,51 +429,14 @@ Deno.serve(async (req) => {
 
     if (constructsError) throw constructsError
 
-    const openAiResponse = await fetch("https://api.openai.com/v1/responses", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${openAiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "gpt-4o-mini",
-        input: buildPrompt(payload, (standards || []) as AcademicStandard[], (constructs || []) as Construct[]),
-        max_output_tokens: 8000,
-        temperature: 0.1,
-        text: {
-          format: {
-            type: "json_schema",
-            name: "bulk_import_items",
-            strict: true,
-            schema: itemSchema,
-          },
-        },
-      }),
-    })
-
-    const openAiJson = await openAiResponse.json()
-    if (!openAiResponse.ok) {
-      console.error("OpenAI error", openAiJson)
-      return jsonResponse({ error: "Gagal panggil OpenAI." }, 502)
-    }
-
-    const outputText =
-      openAiJson.output_text ||
-      openAiJson.output?.flatMap((item: any) => item.content || [])
-        ?.map((content: any) => content.text || "")
-        ?.join("\n")
-        ?.trim()
-
-    if (!outputText) return jsonResponse({ error: "AI tidak memulangkan output." }, 502)
-
-    const parsed = extractJson(outputText)
-    const items = Array.isArray(parsed.items) ? parsed.items : []
     const standardRows = ((standards || []) as AcademicStandard[])
     const constructRows = ((constructs || []) as Construct[])
+    const batchResult = await callOpenAi(openAiKey, payload, standardRows, constructRows)
+    const items = Array.isArray(batchResult.parsed.items) ? batchResult.parsed.items : []
     const normalized = items
       .filter((item: any) => item?.stem && item?.options)
       .map((item: any) => {
-        const metadata = normalizeMetadata(item.metadata || {}, Number(payload.tingkatan) || 4, standardRows, constructRows)
+        const metadata = normalizeMetadata(item.metadata || {}, standardRows, constructRows)
         return {
           questionNo: String(item.questionNo || ""),
           stem: String(item.stem || "").trim(),
@@ -393,20 +458,17 @@ Deno.serve(async (req) => {
         }
       })
 
-    const tokensUsed =
-      (openAiJson.usage?.input_tokens || 0) +
-      (openAiJson.usage?.output_tokens || 0)
-
     await supabase.from("ai_usage_logs").insert({
       profile_id: profile.id,
-      usage_type: "bulk_import_parse",
+      usage_type: Number(payload.batchIndex || 0) === 0 ? "bulk_import_parse" : "bulk_import_parse_batch",
       input_snapshot: {
-        tingkatan: payload.tingkatan,
         languageMode: payload.languageMode || "bm_only",
+        batchIndex: Number(payload.batchIndex || 0),
+        batchCount: Number(payload.batchCount || 1),
         textLength: String(payload.rawText).length,
       },
-      output_snapshot: { itemCount: normalized.length, model: "gpt-4o-mini", usage: openAiJson.usage || null },
-      tokens_used: tokensUsed || null,
+      output_snapshot: { itemCount: normalized.length, model: "gpt-4o-mini", usage: batchResult.usage },
+      tokens_used: batchResult.tokensUsed || null,
     })
 
     return jsonResponse({
