@@ -45,13 +45,6 @@ function startOfMonthIso() {
 }
 
 function buildPrompt(payload: any, standards: AcademicStandard[], constructs: Construct[]) {
-  const standardCatalog = standards
-    .map(
-      (s) =>
-        `T${s.tingkatan} | ${s.theme_name} | ${s.bidang_code} ${s.bidang_name} | SK ${s.standard_kandungan_code} ${s.standard_kandungan_name} | SP ${s.standard_pembelajaran_code} ${s.standard_pembelajaran_name}`,
-    )
-    .join("\n")
-
   const constructCatalog = constructs
     .map((c) => `${c.construct_code} | ${c.construct_group} | ${c.aspect_name}`)
     .join("\n")
@@ -69,7 +62,9 @@ Konteks:
 Peraturan penting:
 - Jangan tambah penerangan luar JSON.
 - Ambil hanya soalan objektif yang mempunyai pilihan A, B, C dan D.
-- Jika jawapan betul tidak jelas, letakkan "answer": "".
+- Jika skema jawapan diberi dalam teks, ikut skema tersebut.
+- Jika skema jawapan tidak diberi, cadangkan jawapan terbaik berdasarkan kandungan soalan dan pilihan A-D.
+- Jika benar-benar tidak boleh ditentukan, barulah letakkan "answer": "".
 - Kekalkan teks asal soalan sebanyak mungkin.
 - Jangan reka fakta baharu.
 - Jika ada nombor soalan, simpan dalam "questionNo".
@@ -79,15 +74,13 @@ Peraturan penting:
 - Jika terdapat marker gambar seperti [IMAGE_1], [IMAGE_2], masukkan marker berkaitan dalam array "imageRefs".
 - Padankan marker gambar kepada soalan paling hampir berdasarkan kedudukan marker dalam teks.
 - Tentukan tingkatan setiap soalan berdasarkan topik, istilah, DSKP dan konteks soalan.
-- Jika topik sangat tidak jelas, pilih tingkatan paling hampir daripada katalog DSKP.
-- Metadata akademik mesti dipilih daripada katalog DSKP yang diberi. Jangan reka kod baharu.
+- Cadangkan 5 hingga 10 kata kunci topik yang spesifik dalam "topic_keywords".
+- Kata kunci mesti datang daripada stem/pilihan jawapan, contohnya "genetik", "mitosis", "label cekap tenaga", "aloi", "kadar denyutan nadi".
+- Elakkan kata kunci umum seperti "rajah", "pernyataan", "yang benar", "antara berikut".
 - Konstruk mesti dipilih daripada katalog konstruk yang diberi. Jangan reka kod baharu.
 - Jika tidak pasti konstruk, gunakan konstruk paling hampir.
 - Aras kesukaran mestilah "rendah", "sederhana" atau "tinggi".
 - Proses semua item objektif lengkap yang wujud dalam batch teks ini.
-
-Katalog DSKP:
-${standardCatalog}
 
 Katalog Konstruk:
 ${constructCatalog}
@@ -141,6 +134,10 @@ const itemSchema = {
               main_construct: { type: "string" },
               construct_code: { type: "string" },
               difficulty_level: { type: "string", enum: ["rendah", "sederhana", "tinggi"] },
+              topic_keywords: {
+                type: "array",
+                items: { type: "string" },
+              },
             },
             required: [
               "tingkatan",
@@ -152,6 +149,7 @@ const itemSchema = {
               "main_construct",
               "construct_code",
               "difficulty_level",
+              "topic_keywords",
             ],
           },
         },
@@ -193,21 +191,65 @@ function normalizeTingkatan(value: unknown) {
   return 4
 }
 
-function findBestStandard(metadata: any, standards: AcademicStandard[]) {
+function findBestStandard(metadata: any, standards: AcademicStandard[], itemText = "") {
   const spCode = normalizeText(metadata.standard_pembelajaran)
   const skCode = normalizeText(metadata.standard_kandungan)
   const bidangCode = normalizeText(metadata.bidang_learning_code)
   const themeName = normalizeText(metadata.theme_name).toLowerCase()
   const tingkatan = normalizeTingkatan(metadata.tingkatan)
+  const keywordText = [
+    themeName,
+    normalizeText(metadata.bidang_learning_name),
+    normalizeText(metadata.standard_kandungan),
+    normalizeText(metadata.standard_pembelajaran),
+    normalizeText(itemText),
+    ...(Array.isArray(metadata.topic_keywords) ? metadata.topic_keywords.map((keyword: unknown) => normalizeText(keyword)) : []),
+  ]
+    .join(" ")
+    .toLowerCase()
 
   return (
     standards.find((row) => row.standard_pembelajaran_code === spCode) ||
     standards.find((row) => row.tingkatan === tingkatan && row.standard_kandungan_code === skCode) ||
     standards.find((row) => row.tingkatan === tingkatan && row.bidang_code === bidangCode) ||
     standards.find((row) => row.tingkatan === tingkatan && row.theme_name.toLowerCase() === themeName) ||
+    scoreStandards(keywordText, standards.filter((row) => row.tingkatan === tingkatan)) ||
     standards.find((row) => row.tingkatan === tingkatan) ||
     standards[0]
   )
+}
+
+function scoreStandards(keywordText: string, standards: AcademicStandard[]) {
+  if (!keywordText.trim()) return null
+
+  let best: AcademicStandard | null = null
+  let bestScore = 0
+
+  for (const row of standards) {
+    const haystack = [
+      row.theme_name,
+      row.bidang_code,
+      row.bidang_name,
+      row.standard_kandungan_code,
+      row.standard_kandungan_name,
+      row.standard_pembelajaran_code,
+      row.standard_pembelajaran_name,
+    ]
+      .join(" ")
+      .toLowerCase()
+
+    const score = keywordText
+      .split(/\s+/)
+      .filter((word) => word.length >= 4 && haystack.includes(word))
+      .length
+
+    if (score > bestScore) {
+      best = row
+      bestScore = score
+    }
+  }
+
+  return bestScore > 0 ? best : null
 }
 
 function findBestConstruct(metadata: any, constructs: Construct[]) {
@@ -226,8 +268,9 @@ function normalizeMetadata(
   metadata: any,
   standards: AcademicStandard[],
   constructs: Construct[],
+  itemText = "",
 ) {
-  const standard = findBestStandard(metadata, standards)
+  const standard = findBestStandard(metadata, standards, itemText)
   const construct = findBestConstruct(metadata, constructs)
 
   return {
@@ -248,9 +291,9 @@ function normalizeMetadata(
 
 async function callOpenAi(openAiKey: string, payload: any, standards: AcademicStandard[], constructs: Construct[]) {
   const requestBody = {
-    model: "gpt-4o-mini",
-    input: buildPrompt(payload, standards, constructs),
-    max_output_tokens: 6000,
+      model: "gpt-4o-mini",
+      input: buildPrompt(payload, standards, constructs),
+      max_output_tokens: 3500,
     temperature: 0.1,
     text: {
       format: {
@@ -316,9 +359,9 @@ async function callOpenAiLoose(
       input: `${buildPrompt(payload, standards, constructs)}
 
 Pulangkan JSON sahaja dalam bentuk:
-{"items":[{"questionNo":"","stem":"","options":{"A":"","B":"","C":"","D":""},"answer":"","imageRefs":[],"metadata":{"tingkatan":4,"theme_name":"","bidang_learning_code":"","bidang_learning_name":"","standard_kandungan":"","standard_pembelajaran":"","main_construct":"","construct_code":"","difficulty_level":"sederhana"}}]}
+{"items":[{"questionNo":"","stem":"","options":{"A":"","B":"","C":"","D":""},"answer":"","imageRefs":[],"metadata":{"tingkatan":4,"theme_name":"","bidang_learning_code":"","bidang_learning_name":"","standard_kandungan":"","standard_pembelajaran":"","main_construct":"","construct_code":"","difficulty_level":"sederhana","topic_keywords":[]}}]}
 Jangan tambah markdown atau teks lain.`,
-      max_output_tokens: 5000,
+      max_output_tokens: 3500,
       temperature: 0,
     }),
   })
@@ -436,7 +479,14 @@ Deno.serve(async (req) => {
     const normalized = items
       .filter((item: any) => item?.stem && item?.options)
       .map((item: any) => {
-        const metadata = normalizeMetadata(item.metadata || {}, standardRows, constructRows)
+        const itemText = [
+          item.stem,
+          item.options?.A,
+          item.options?.B,
+          item.options?.C,
+          item.options?.D,
+        ].map((value) => String(value || "")).join(" ")
+        const metadata = normalizeMetadata(item.metadata || {}, standardRows, constructRows, itemText)
         return {
           questionNo: String(item.questionNo || ""),
           stem: String(item.stem || "").trim(),

@@ -80,6 +80,7 @@ export default function BankSoalanAdmin() {
   const [items, setItems] = useState<ItemRow[]>([])
   const [loading, setLoading] = useState(true)
   const [filters, setFilters] = useState<FilterState>(defaultFilters)
+  const [filtersOpen, setFiltersOpen] = useState(false)
   const [previewItem, setPreviewItem] = useState<ItemRow | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [updatingStatusId, setUpdatingStatusId] = useState<string | null>(null)
@@ -267,7 +268,7 @@ export default function BankSoalanAdmin() {
   }
 
   const filteredItems = useMemo(() => {
-    return items.filter((item) => {
+    const filtered = items.filter((item) => {
       const haystack = [
         item.item_code,
         item.theme_name || "",
@@ -293,6 +294,16 @@ export default function BankSoalanAdmin() {
       if (filters.status && item.status !== filters.status) return false
 
       return true
+    })
+
+    return filtered.sort((a, b) => {
+      const priorityDiff = getStatusPriority(a.status) - getStatusPriority(b.status)
+      if (priorityDiff !== 0) return priorityDiff
+
+      const paperDiff = getPaperPriority(a.paper, a.section) - getPaperPriority(b.paper, b.section)
+      if (paperDiff !== 0) return paperDiff
+
+      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
     })
   }, [items, filters])
 
@@ -329,7 +340,7 @@ export default function BankSoalanAdmin() {
         </div>
       </div>
 
-      <div className="stats-grid">
+      <div className="stats-grid stats-grid-compact">
         <StatCard title="Jumlah Item" value={stats.total} />
         <StatCard title="Kertas 1" value={stats.paper1} />
         <StatCard title="Kertas 2" value={stats.paper2} />
@@ -338,13 +349,23 @@ export default function BankSoalanAdmin() {
         <StatCard title="Published" value={stats.published} />
       </div>
 
-      <section className="card-block">
-        <div className="card-head">
-          <h2>Penapis & Carian</h2>
-          <p>Tapis item dengan lebih cepat mengikut struktur sebenar sistem.</p>
+      <section className="card-block filter-card">
+        <div className="filter-card-head">
+          <div className="card-head">
+            <h2>Penapis & Carian</h2>
+            <p>{filtersOpen ? "Tapis item dengan lebih cepat mengikut struktur sebenar sistem." : getFilterSummary(filters)}</p>
+          </div>
+          <button
+            type="button"
+            className="btn btn-light filter-toggle-btn"
+            onClick={() => setFiltersOpen((value) => !value)}
+            aria-expanded={filtersOpen}
+          >
+            {filtersOpen ? "Tutup Penapis" : "Buka Penapis"}
+          </button>
         </div>
 
-        <div className="form-grid form-grid-4">
+        {filtersOpen && <div className="form-grid form-grid-4 filter-grid">
           <Field label="Carian">
             <input
               className="input"
@@ -459,7 +480,7 @@ export default function BankSoalanAdmin() {
               Reset Penapis
             </button>
           </div>
-        </div>
+        </div>}
       </section>
 
       {message && <div className="admin-alert">{message}</div>}
@@ -869,6 +890,41 @@ function getSortedSubQuestions(item: ItemRow) {
   return [...(item.item_subquestions || [])].sort(
     (a, b) => a.display_order - b.display_order || a.label.localeCompare(b.label),
   )
+}
+
+function getStatusPriority(status: ItemStatus) {
+  const priority: Record<ItemStatus, number> = {
+    pending_review: 1,
+    draft: 2,
+    rejected: 3,
+    approved: 4,
+    published: 5,
+    archived: 6,
+  }
+
+  return priority[status] || 99
+}
+
+function getPaperPriority(paper: ItemRow["paper"], section: ItemRow["section"]) {
+  if (paper === "paper_1") return 1
+  if (section === "A") return 2
+  if (section === "B") return 3
+  if (section === "C") return 4
+  return 5
+}
+
+function getFilterSummary(filters: FilterState) {
+  const active = [
+    filters.search ? "carian aktif" : "",
+    filters.tingkatan ? `T${filters.tingkatan}` : "",
+    filters.paper ? (filters.paper === "paper_1" ? "Kertas 1" : "Kertas 2") : "",
+    filters.section ? `Bahagian ${filters.section}` : "",
+    filters.construct || "",
+    filters.difficulty || "",
+    filters.status || "",
+  ].filter(Boolean)
+
+  return active.length > 0 ? `Penapis aktif: ${active.join(" · ")}` : "Penapis disembunyikan untuk paparan bank soalan yang lebih luas."
 }
 
 function formatSubQuestionLabel(item: Pick<SubQuestionRow, "label" | "sub_label">) {

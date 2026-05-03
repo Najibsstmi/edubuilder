@@ -89,20 +89,26 @@ export default function BuilderSetSoalan() {
     const source = items.filter(
       (item) => tingkatanValues.includes(item.tingkatan) && item.paper === "paper_1",
     )
-    const map = new Map<string, { code: string; name: string; count: number }>()
+    const map = new Map<string, { key: string; tingkatan: 4 | 5; code: string; name: string; count: number }>()
 
     source.forEach((item) => {
+      const key = getBidangKey(item)
       const code = item.bidang_learning_code || "unknown"
       const name = item.bidang_learning_name || "Tanpa bidang"
-      const current = map.get(code)
-      map.set(code, {
+      const current = map.get(key)
+      map.set(key, {
+        key,
+        tingkatan: item.tingkatan,
         code,
         name,
         count: (current?.count || 0) + 1,
       })
     })
 
-    return Array.from(map.values()).sort((a, b) => a.code.localeCompare(b.code))
+    return Array.from(map.values()).sort((a, b) => {
+      if (a.tingkatan !== b.tingkatan) return a.tingkatan - b.tingkatan
+      return naturalCodeSort(a.code, b.code)
+    })
   }, [items, tingkatanValues])
 
   const customPool = useMemo(() => {
@@ -113,7 +119,7 @@ export default function BuilderSetSoalan() {
 
       if (selectedBidangCodes.length > 0) {
         pool = pool.filter((item) =>
-          selectedBidangCodes.includes(item.bidang_learning_code || "unknown"),
+          selectedBidangCodes.includes(getBidangKey(item)),
         )
       }
     }
@@ -201,7 +207,7 @@ export default function BuilderSetSoalan() {
   }
 
   function selectAllBidang() {
-    setSelectedBidangCodes(bidangOptions.map((option) => option.code))
+    setSelectedBidangCodes(bidangOptions.map((option) => option.key))
     setGeneratedSet([])
   }
 
@@ -215,7 +221,7 @@ export default function BuilderSetSoalan() {
     const groupedByBidang = new Map<string, Item[]>()
 
     pool.forEach((item) => {
-      const key = item.bidang_learning_code || "unknown"
+      const key = getBidangKey(item)
       groupedByBidang.set(key, [...(groupedByBidang.get(key) || []), item])
     })
 
@@ -337,7 +343,7 @@ export default function BuilderSetSoalan() {
     const replacementPool = customPool.filter((item) => {
       if (usedIds.has(item.id)) return false
       if (item.difficulty_level !== current.difficulty_level) return false
-      if ((item.bidang_learning_code || "unknown") !== (current.bidang_learning_code || "unknown")) return false
+      if (getBidangKey(item) !== getBidangKey(current)) return false
       return true
     })
 
@@ -380,6 +386,25 @@ export default function BuilderSetSoalan() {
     if (generatedSet.length === 0) {
       setMessage("Jana set dahulu sebelum simpan.")
       return
+    }
+
+    const setLimit = getSavedSetLimit(profile)
+    if (setLimit !== Infinity) {
+      const { count, error: countError } = await supabase
+        .from("build_sets")
+        .select("id", { count: "exact", head: true })
+        .eq("owner_profile_id", profile.id)
+
+      if (countError) {
+        console.error("Build set count error", countError)
+        setMessage("Gagal semak had simpan set.")
+        return
+      }
+
+      if ((count || 0) >= setLimit) {
+        setMessage(`Had simpan set telah penuh (${setLimit} set). Padam set lama di Set Saya sebelum simpan set baharu.`)
+        return
+      }
     }
 
     setSavingSet(true)
@@ -624,15 +649,15 @@ export default function BuilderSetSoalan() {
               ) : (
                 <div className="builder-topic-grid">
                   {bidangOptions.map((option) => (
-                    <label key={option.code} className="builder-topic-option">
+                    <label key={option.key} className="builder-topic-option">
                       <input
                         type="checkbox"
-                        checked={selectedBidangCodes.includes(option.code)}
-                        onChange={() => toggleBidang(option.code)}
+                        checked={selectedBidangCodes.includes(option.key)}
+                        onChange={() => toggleBidang(option.key)}
                       />
                       <span>
                         <strong>
-                          {option.code === "unknown" ? "Tanpa kod" : option.code} - {option.name}
+                          T{option.tingkatan} · {option.code === "unknown" ? "Tanpa kod" : option.code} - {option.name}
                         </strong>
                         <small>{option.count} item published</small>
                       </span>
@@ -829,6 +854,29 @@ function sortOptions(options: ItemOption[] = []) {
     if (a.display_order !== b.display_order) return a.display_order - b.display_order
     return a.option_label.localeCompare(b.option_label)
   })
+}
+
+function getBidangKey(item: Pick<Item, "tingkatan" | "bidang_learning_code">) {
+  return `T${item.tingkatan}:${item.bidang_learning_code || "unknown"}`
+}
+
+function getSavedSetLimit(profile: { role?: string; account_type?: string } | null) {
+  if (!profile) return 1
+  if (profile.role === "master_admin") return Infinity
+  if (profile.role === "admin") return 20
+  if (profile.account_type === "full") return 15
+  return 1
+}
+
+function naturalCodeSort(a: string, b: string) {
+  const aNumber = Number.parseFloat(a)
+  const bNumber = Number.parseFloat(b)
+
+  if (Number.isFinite(aNumber) && Number.isFinite(bNumber) && aNumber !== bNumber) {
+    return aNumber - bNumber
+  }
+
+  return a.localeCompare(b)
 }
 
 function truncate(text: string, max = 180) {

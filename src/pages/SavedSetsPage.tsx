@@ -55,6 +55,7 @@ export default function SavedSetsPage() {
   const [sets, setSets] = useState<SavedSet[]>([])
   const [selectedSetId, setSelectedSetId] = useState("")
   const [loading, setLoading] = useState(true)
+  const [deletingSetId, setDeletingSetId] = useState("")
   const [message, setMessage] = useState("")
 
   useEffect(() => {
@@ -67,6 +68,7 @@ export default function SavedSetsPage() {
   )
 
   const selectedItems = useMemo(() => normalizeItems(selectedSet), [selectedSet])
+  const setLimit = getSavedSetLimit(profile)
 
   async function fetchSets() {
     if (!profile?.id) return
@@ -116,7 +118,10 @@ export default function SavedSetsPage() {
     } else {
       const nextSets = (data || []) as SavedSet[]
       setSets(nextSets)
-      setSelectedSetId((current) => current || nextSets[0]?.id || "")
+      setSelectedSetId((current) => {
+        if (current && nextSets.some((set) => set.id === current)) return current
+        return nextSets[0]?.id || ""
+      })
     }
 
     setLoading(false)
@@ -124,6 +129,45 @@ export default function SavedSetsPage() {
 
   function printPdf() {
     window.print()
+  }
+
+  async function deleteSet(set: SavedSet) {
+    const confirmed = window.confirm(`Padam set "${set.title}"? Set ini akan dibuang daripada Set Saya.`)
+    if (!confirmed) return
+
+    setDeletingSetId(set.id)
+    setMessage("")
+
+    try {
+      const { error: itemError } = await supabase
+        .from("build_set_items")
+        .delete()
+        .eq("build_set_id", set.id)
+
+      if (itemError) throw itemError
+
+      const { error: setError } = await supabase
+        .from("build_sets")
+        .delete()
+        .eq("id", set.id)
+
+      if (setError) throw setError
+
+      setSets((prev) => {
+        const next = prev.filter((row) => row.id !== set.id)
+        setSelectedSetId((current) => {
+          if (current !== set.id) return current
+          return next[0]?.id || ""
+        })
+        return next
+      })
+      setMessage("Set berjaya dipadam.")
+    } catch (error: any) {
+      console.error("Delete saved set error", error)
+      setMessage(error.message || "Gagal memadam set.")
+    } finally {
+      setDeletingSetId("")
+    }
   }
 
   async function downloadWord() {
@@ -161,7 +205,11 @@ export default function SavedSetsPage() {
         <aside className="card-block saved-sets-list">
           <div className="card-head">
             <h2>Senarai Set</h2>
-            <p>{loading ? "Memuat set..." : `${sets.length} set disimpan`}</p>
+            <p>
+              {loading
+                ? "Memuat set..."
+                : `${sets.length}${setLimit === Infinity ? "" : `/${setLimit}`} set disimpan`}
+            </p>
           </div>
 
           {sets.length === 0 && !loading ? (
@@ -198,6 +246,14 @@ export default function SavedSetsPage() {
               </p>
             </div>
             <div className="action-row">
+              <button
+                type="button"
+                className="btn btn-danger"
+                onClick={() => selectedSet && void deleteSet(selectedSet)}
+                disabled={!selectedSet || deletingSetId === selectedSet.id}
+              >
+                {deletingSetId === selectedSet?.id ? "Memadam..." : "Padam Set"}
+              </button>
               <button
                 type="button"
                 className="btn btn-light"
@@ -523,6 +579,14 @@ function slugify(text: string) {
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/(^-|-$)/g, "") || "set-soalan"
   )
+}
+
+function getSavedSetLimit(profile: { role?: string; account_type?: string } | null) {
+  if (!profile) return 1
+  if (profile.role === "master_admin") return Infinity
+  if (profile.role === "admin") return 20
+  if (profile.account_type === "full") return 15
+  return 1
 }
 
 function normalizeWordOptionHtml(html: string) {

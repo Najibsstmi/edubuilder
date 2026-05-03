@@ -36,6 +36,7 @@ type ExtractedImage = {
 }
 
 const optionLabels = ["A", "B", "C", "D"] as const
+const supportedImageMimeTypes = ["image/png", "image/jpeg", "image/jpg", "image/webp", "image/gif"]
 
 export default function BulkImportPage() {
   const { profile } = useAuth()
@@ -49,6 +50,7 @@ export default function BulkImportPage() {
   const [parsing, setParsing] = useState(false)
   const [importing, setImporting] = useState(false)
   const [message, setMessage] = useState("")
+  const detectedQuestionCount = countDetectedQuestions(rawText)
 
   async function handleFileUpload(file: File | null) {
     if (!file) return
@@ -68,7 +70,11 @@ export default function BulkImportPage() {
         setRawText(result.text)
         setExtractedImages(result.images)
         setMessage(
-          `DOCX berjaya diextract. ${result.images.length} gambar dijumpai dan ditanda sebagai [IMAGE_1], [IMAGE_2]...`,
+          `DOCX berjaya diextract. ${result.images.length} gambar web dijumpai.${
+            result.unsupportedImages.length > 0
+              ? ` ${result.unsupportedImages.length} gambar format lama/EMF dilangkau kerana tidak disokong web.`
+              : ""
+          }`,
         )
       } else if (ext === "pdf") {
         const text = await extractPdfText(file)
@@ -97,11 +103,12 @@ export default function BulkImportPage() {
     setParsing(true)
 
     try {
-      const batches = splitQuestionBatches(rawText, 5)
+      const batches = splitQuestionBatches(rawText, 3)
       const allItems: any[] = []
+      const estimatedItems = countDetectedQuestions(rawText)
 
       for (let batchIndex = 0; batchIndex < batches.length; batchIndex += 1) {
-        setMessage(`AI memproses batch ${batchIndex + 1}/${batches.length}...`)
+        setMessage(`AI memproses batch ${batchIndex + 1}/${batches.length}... Anggaran soalan dikesan: ${estimatedItems}`)
         const { data, error } = await supabase.functions.invoke("parse-bulk-items", {
           body: {
             languageMode,
@@ -137,12 +144,12 @@ export default function BulkImportPage() {
           D: item.options?.D || "",
         },
         answer: item.answer || "",
-        imageRefs: Array.isArray(item.imageRefs) ? item.imageRefs : [],
+        imageRefs: Array.isArray(item.imageRefs) ? filterSupportedImageRefs(item.imageRefs, extractedImages) : [],
         ...mapMetadata(item.metadata),
         selected: true,
       })),
       )
-      setMessage(`${allItems.length} draft item dijana. Sila semak sebelum import.`)
+      setMessage(`${allItems.length}/${estimatedItems || allItems.length} draft item dijana. Sila semak sebelum import.`)
     } finally {
       setParsing(false)
     }
@@ -319,6 +326,11 @@ export default function BulkImportPage() {
                 ? "Sedang extract fail..."
                 : "DOCX boleh extract teks dan gambar embedded. PDF digital buat masa ini extract teks dahulu."}
             </div>
+            {rawText.trim() && (
+              <div className="bulk-detect-note">
+                Anggaran soalan dikesan daripada teks: <strong>{detectedQuestionCount || "-"}</strong>
+              </div>
+            )}
           </div>
 
           {extractedImages.length > 0 && (
@@ -461,26 +473,100 @@ function generateItemCode(tingkatan: 4 | 5) {
   return `SCI-K1-T${tingkatan}-AI${random}`
 }
 
-function splitQuestionBatches(text: string, batchSize = 5) {
-  const normalized = text.replace(/\r/g, "\n").trim()
-  const matches = Array.from(normalized.matchAll(/(?:^|\n)\s*(\d{1,2})[\).]?\s+/g))
+function countDetectedQuestions(text: string) {
+  return splitQuestionBlocks(text).length
+}
 
-  if (matches.length < 2) return [normalized]
+function splitQuestionBatches(text: string, batchSize = 3) {
+  const normalized = normalizeBulkText(text)
+  const blocks = splitQuestionBlocks(normalized)
 
-  const blocks = matches
-    .map((match, index) => {
-      const start = match.index || 0
-      const end = matches[index + 1]?.index || normalized.length
-      return normalized.slice(start, end).trim()
-    })
-    .filter(Boolean)
-
+  if (blocks.length < 2) return [normalized]
   const batches: string[] = []
   for (let i = 0; i < blocks.length; i += batchSize) {
     batches.push(blocks.slice(i, i + batchSize).join("\n\n"))
   }
 
   return batches
+}
+
+function normalizeBulkText(text: string) {
+  return text
+    .replace(/\r/g, "\n")
+    .replace(/\u00a0/g, " ")
+    .replace(/([^\n])(\[(?:IMAGE|Image|image)_\d+\])/g, "$1\n$2")
+    .replace(/(\[(?:IMAGE|Image|image)_\d+\])([^\n])/g, "$1\n$2")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim()
+}
+
+function splitQuestionBlocks(text: string) {
+  const normalized = normalizeBulkText(text)
+  const starts = findQuestionStarts(normalized)
+
+  if (starts.length < 2) return normalized ? [normalized] : []
+
+  return starts
+    .map((start, index) => {
+      const end = starts[index + 1]?.index || normalized.length
+      return normalized.slice(start.index, end).trim()
+    })
+    .filter(Boolean)
+}
+
+function findQuestionStarts(text: string) {
+  const normalized = normalizeBulkText(text)
+  const candidates = Array.from(
+    normalized.matchAll(/(?:^|[\n\f]|(?:\s{2,}))(\d{1,2})(?:[\).])?\s+(?=\S)/g),
+  )
+    .map((match) => ({
+      index: getDigitIndex(match),
+      questionNo: Number(match[1]),
+    }))
+    .filter((match) => match.questionNo >= 1 && match.questionNo <= 60)
+    .sort((a, b) => a.index - b.index)
+
+  const sequential = buildSequentialQuestionStarts(candidates)
+  if (sequential.length >= 2) return sequential
+
+  return candidates.filter((match, index, all) => {
+    const end = all[index + 1]?.index || normalized.length
+    const chunk = normalized.slice(match.index, end)
+    return hasMcqMarkers(chunk)
+  })
+}
+
+function getDigitIndex(match: RegExpMatchArray) {
+  const base = match.index || 0
+  const offset = match[0].search(/\d/)
+  return base + Math.max(offset, 0)
+}
+
+function buildSequentialQuestionStarts(candidates: Array<{ index: number; questionNo: number }>) {
+  if (candidates.length < 2) return []
+
+  const byQuestionNo = new Map<number, Array<{ index: number; questionNo: number }>>()
+  candidates.forEach((candidate) => {
+    byQuestionNo.set(candidate.questionNo, [...(byQuestionNo.get(candidate.questionNo) || []), candidate])
+  })
+
+  const starts: Array<{ index: number; questionNo: number }> = []
+  let previousIndex = -1
+
+  for (let questionNo = 1; questionNo <= 60; questionNo += 1) {
+    const next = (byQuestionNo.get(questionNo) || []).find((candidate) => candidate.index > previousIndex)
+    if (!next) break
+    starts.push(next)
+    previousIndex = next.index
+  }
+
+  return starts.length >= 2 ? starts : []
+}
+
+function hasMcqMarkers(text: string) {
+  return ["A", "B", "C", "D"].every((label) =>
+    new RegExp(`(?:^|\\n|\\s{2,})${label}(?:[\\).]|\\s{2,})`, "i").test(text),
+  )
 }
 
 function mapMetadata(metadata: any): Pick<
@@ -521,6 +607,7 @@ function normalizeDifficulty(value: unknown): DraftItem["difficultyLevel"] {
 async function extractDocx(file: File) {
   let imageIndex = 0
   const images: ExtractedImage[] = []
+  const unsupportedImages: string[] = []
   const arrayBuffer = await file.arrayBuffer()
 
   const result = await mammoth.convertToHtml(
@@ -529,9 +616,15 @@ async function extractDocx(file: File) {
       convertImage: mammoth.images.imgElement(async (image) => {
         imageIndex += 1
         const mimeType = image.contentType || "image/png"
+        const ref = `IMAGE_${imageIndex}`
+
+        if (!isSupportedImageMimeType(mimeType)) {
+          unsupportedImages.push(`${ref} (${mimeType})`)
+          return { src: "", alt: ref }
+        }
+
         const base64 = await image.read("base64")
         const dataUrl = `data:${mimeType};base64,${base64}`
-        const ref = `IMAGE_${imageIndex}`
         images.push({ ref, dataUrl, mimeType })
         return { src: dataUrl, alt: ref }
       }),
@@ -539,6 +632,9 @@ async function extractDocx(file: File) {
   )
 
   const doc = new DOMParser().parseFromString(result.value, "text/html")
+  doc.querySelectorAll("p, li, tr, h1, h2, h3, h4").forEach((element) => {
+    element.appendChild(doc.createTextNode("\n"))
+  })
   doc.querySelectorAll("img").forEach((img) => {
     const ref = img.getAttribute("alt") || `IMAGE_${images.length + 1}`
     img.replaceWith(doc.createTextNode(`\n[${ref}]\n`))
@@ -547,6 +643,7 @@ async function extractDocx(file: File) {
   return {
     text: doc.body.innerText.replace(/\n{3,}/g, "\n\n").trim(),
     images,
+    unsupportedImages,
   }
 }
 
@@ -581,6 +678,7 @@ async function uploadImagesForItem(
   for (const ref of refs) {
     const image = extractedImages.find((entry) => entry.ref.toLowerCase() === ref.toLowerCase())
     if (!image) continue
+    if (!isSupportedImageMimeType(image.mimeType)) continue
 
     const blob = dataUrlToBlob(image.dataUrl)
     const ext = mimeToExt(image.mimeType)
@@ -598,6 +696,19 @@ async function uploadImagesForItem(
   }
 
   return imageUrlByRef
+}
+
+function filterSupportedImageRefs(refs: unknown[], extractedImages: ExtractedImage[]) {
+  return refs
+    .map((ref) => String(ref || "").replace(/[\[\]]/g, "").trim())
+    .filter((ref) => {
+      const image = extractedImages.find((entry) => entry.ref.toLowerCase() === ref.toLowerCase())
+      return image ? isSupportedImageMimeType(image.mimeType) : false
+    })
+}
+
+function isSupportedImageMimeType(mimeType: string) {
+  return supportedImageMimeTypes.includes(mimeType.toLowerCase())
 }
 
 function toHtmlWithImages(text: string, imageUrlByRef: Map<string, string>) {
