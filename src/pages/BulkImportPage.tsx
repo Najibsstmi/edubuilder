@@ -70,7 +70,7 @@ export default function BulkImportPage() {
         setRawText(result.text)
         setExtractedImages(result.images)
         setMessage(
-          `DOCX berjaya diextract. ${result.images.length} gambar web dijumpai.${
+          `DOCX berjaya diextract. ${result.images.length} gambar web dijumpai. Anggaran ${countDetectedQuestions(result.text)} soalan dikesan.${
             result.unsupportedImages.length > 0
               ? ` ${result.unsupportedImages.length} gambar format lama/EMF dilangkau kerana tidak disokong web.`
               : ""
@@ -604,6 +604,93 @@ function normalizeDifficulty(value: unknown): DraftItem["difficultyLevel"] {
   return value === "rendah" || value === "tinggi" || value === "sederhana" ? value : "sederhana"
 }
 
+function cleanExtractedText(text: string) {
+  return normalizeBulkText(
+    text
+      .replace(/\t/g, " ")
+      .replace(/[ \u00a0]{2,}/g, " ")
+      .replace(/\n[ \u00a0]+/g, "\n"),
+  )
+}
+
+function extractDocxImportText(body: HTMLElement) {
+  const lines: string[] = []
+  let questionNo = 1
+
+  body.childNodes.forEach((node) => {
+    if (node instanceof HTMLOListElement) {
+      questionNo = appendOrderedListText(node, lines, questionNo, 0)
+      return
+    }
+
+    if (node instanceof HTMLElement) {
+      const text = ownBlockText(node)
+      if (text) lines.push(text)
+    }
+  })
+
+  return cleanExtractedText(lines.join("\n"))
+}
+
+function appendOrderedListText(ol: HTMLOListElement, lines: string[], questionNo: number, depth: number) {
+  let optionIndex = 0
+
+  directChildren(ol, "li").forEach((li) => {
+    const ownText = ownBlockText(li)
+    const nestedLists = directChildren(li, "ol") as HTMLOListElement[]
+    const hasNestedOptions = nestedLists.length > 0
+
+    if (depth === 0) {
+      const shouldStartQuestion = hasNestedOptions || optionIndex >= optionLabels.length || looksLikeQuestionStem(ownText)
+
+      if (shouldStartQuestion) {
+        if (ownText) lines.push(`${questionNo}. ${ownText}`)
+        questionNo += 1
+        optionIndex = 0
+        nestedLists.forEach((nestedList) => {
+          questionNo = appendOrderedListText(nestedList, lines, questionNo, depth + 1)
+        })
+        return
+      }
+    }
+
+    const label = optionLabels[optionIndex] || "-"
+    if (ownText) lines.push(`${label}. ${ownText}`)
+    optionIndex += 1
+    nestedLists.forEach((nestedList) => {
+      questionNo = appendOrderedListText(nestedList, lines, questionNo, depth + 1)
+    })
+  })
+
+  return questionNo
+}
+
+function directChildren(element: Element, tagName: string) {
+  return Array.from(element.children).filter((child) => child.tagName.toLowerCase() === tagName.toLowerCase())
+}
+
+function ownBlockText(element: Element) {
+  const clone = element.cloneNode(true) as HTMLElement
+  clone.querySelectorAll("ol, ul").forEach((list) => list.remove())
+  return cleanExtractedText(clone.textContent || "")
+}
+
+function looksLikeQuestionStem(text: string) {
+  const value = text.trim()
+  if (!value) return false
+  const lower = value.toLowerCase()
+
+  return (
+    /[?？]$/.test(value) ||
+    /^(antara|apakah|manakah|berapakah|bagaimanakah|yang manakah|rajah|jadual|maklumat|berdasarkan|seorang|huda|pilih|nyatakan|apabila)\b/i.test(
+      value,
+    ) ||
+    lower.includes("yang manakah") ||
+    lower.includes("apakah") ||
+    lower.includes("rajah") && lower.includes("menunjukkan")
+  )
+}
+
 async function extractDocx(file: File) {
   let imageIndex = 0
   const images: ExtractedImage[] = []
@@ -640,8 +727,13 @@ async function extractDocx(file: File) {
     img.replaceWith(doc.createTextNode(`\n[${ref}]\n`))
   })
 
+  const plainText = cleanExtractedText(doc.body.innerText)
+  const structuredText = extractDocxImportText(doc.body)
+  const text =
+    countDetectedQuestions(structuredText) > countDetectedQuestions(plainText) ? structuredText : plainText
+
   return {
-    text: doc.body.innerText.replace(/\n{3,}/g, "\n\n").trim(),
+    text,
     images,
     unsupportedImages,
   }
