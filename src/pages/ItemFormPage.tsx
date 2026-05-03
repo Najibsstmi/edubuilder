@@ -43,6 +43,11 @@ type QuestionReferenceOption = {
   marks: number
 }
 
+type ConstructBlueprint = {
+  label: string
+  codePrefixes: string[]
+}
+
 const questionReferenceOptionsBySection: Record<Exclude<SectionType, "">, QuestionReferenceOption[]> = {
   A: [
     { value: "1", label: "Soalan 1 (5 markah)", marks: 5 },
@@ -63,6 +68,22 @@ const questionReferenceOptionsBySection: Record<Exclude<SectionType, "">, Questi
     { value: "12", label: "Soalan 12 (12 markah)", marks: 12 },
     { value: "13", label: "Soalan 13 (12 markah)", marks: 12 },
   ],
+}
+
+const constructBlueprintByQuestionNo: Record<string, ConstructBlueprint> = {
+  "1": { label: "Bahagian A: SS dan KS02", codePrefixes: ["SS", "KS02"] },
+  "2": { label: "Bahagian A: SS dan KS02", codePrefixes: ["SS", "KS02"] },
+  "3": { label: "Bahagian A: SS dan KS02", codePrefixes: ["SS", "KS02"] },
+  "4": { label: "Bahagian A: SS dan KS02", codePrefixes: ["SS", "KS02"] },
+  "5": { label: "Bahagian B: PS01, KS01, KS02, KS03", codePrefixes: ["PS01", "KS01", "KS02", "KS03"] },
+  "6": { label: "Bahagian B: PS01, KS01, KS02, KS03", codePrefixes: ["PS01", "KS01", "KS02", "KS03"] },
+  "7": { label: "Bahagian B: PS01, KS02, KS03, KS04", codePrefixes: ["PS01", "KS02", "KS03", "KS04"] },
+  "8": { label: "Bahagian B: PS01, KS02, KS03, KS04", codePrefixes: ["PS01", "KS02", "KS03", "KS04"] },
+  "9": { label: "Bahagian B: KS01, KS02, KS04, KS05", codePrefixes: ["KS01", "KS02", "KS04", "KS05"] },
+  "10": { label: "Bahagian B: KS01, KS02, KS04, KS05", codePrefixes: ["KS01", "KS02", "KS04", "KS05"] },
+  "11": { label: "Bahagian C: SS0112", codePrefixes: ["SS0112"] },
+  "12": { label: "Bahagian C: PS01, KS01, KS02, KS04", codePrefixes: ["PS01", "KS01", "KS02", "KS04"] },
+  "13": { label: "Bahagian C: PS01, KS01, KS02, KS04", codePrefixes: ["PS01", "KS01", "KS02", "KS04"] },
 }
 
 function SparklesIcon() {
@@ -240,6 +261,9 @@ export default function ItemFormPage() {
   )
   const expectedFormatMarks = selectedQuestionReference?.marks || 0
   const displayedItemMarks = isPaper1 ? 1 : expectedFormatMarks || totalSubQuestionMarks
+  const constructBlueprint = !isPaper1 && questionNoReference
+    ? constructBlueprintByQuestionNo[questionNoReference]
+    : null
 
   const temaList = Array.from(
     new Set(standards.map((s) => s.theme_name as string))
@@ -523,6 +547,42 @@ export default function ItemFormPage() {
     return kpsRules.find((rule) => rule.pattern.test(lower))?.code || "SS0112"
   }
 
+  function findBlueprintConstruct(text: string, blueprint: ConstructBlueprint | null) {
+    if (!blueprint) return null
+
+    const lower = text.toLowerCase()
+    const candidates = constructs.filter((construct) =>
+      blueprint.codePrefixes.some((prefix) => (construct.construct_code || "").startsWith(prefix)),
+    )
+
+    if (candidates.length === 0) return null
+
+    const scored = candidates
+      .map((construct) => {
+        const prefixIndex = blueprint.codePrefixes.findIndex((prefix) =>
+          (construct.construct_code || "").startsWith(prefix),
+        )
+        const aspectText = `${construct.aspect_name || ""} ${construct.description || ""}`.toLowerCase()
+        const aspectTokens = tokenize(aspectText)
+        const textScore = aspectTokens.reduce(
+          (total, token) => total + (lower.includes(token) ? 3 : 0),
+          0,
+        )
+        const inferredGroup = inferConstructGroup(text)
+        const groupScore = construct.construct_group === inferredGroup ? 8 : 0
+        const inferredCode = inferConstructCode(text, construct.construct_group)
+        const codeScore = inferredCode && construct.construct_code === inferredCode ? 10 : 0
+
+        return {
+          construct,
+          score: textScore + groupScore + codeScore + Math.max(0, 6 - prefixIndex),
+        }
+      })
+      .sort((a, b) => b.score - a.score)
+
+    return scored[0]?.construct || null
+  }
+
   function inferDifficulty(text: string): DifficultyType {
     const lower = text.toLowerCase()
     if (
@@ -553,7 +613,9 @@ export default function ItemFormPage() {
   function inferSubQuestionMetadata(text: string) {
     const suggestedGroup = inferConstructGroup(text)
     const suggestedCode = inferConstructCode(text, suggestedGroup)
+    const blueprintConstruct = findBlueprintConstruct(text, constructBlueprint)
     const matchedConstruct =
+      blueprintConstruct ||
       constructs.find((c) => c.construct_code === suggestedCode) ||
       constructs.find((c) => c.construct_group === suggestedGroup)
 
@@ -708,7 +770,9 @@ export default function ItemFormPage() {
       }
 
       const suggestedConstruct = inferConstructGroup(questionText)
+      const blueprintConstruct = findBlueprintConstruct(questionText, constructBlueprint)
       const availableConstructGroup =
+        blueprintConstruct?.construct_group ||
         constructs.find((c) => c.construct_group === suggestedConstruct)?.construct_group ||
         constructs.find((c) =>
           (c.construct_group || "").toLowerCase().includes(
@@ -723,6 +787,7 @@ export default function ItemFormPage() {
         setMainConstruct(availableConstructGroup)
         const suggestedConstructCode = inferConstructCode(questionText, availableConstructGroup)
         const matchedConstruct =
+          blueprintConstruct ||
           constructs.find((c) => c.construct_code === suggestedConstructCode) ||
           availableConstruct
 
@@ -769,6 +834,7 @@ export default function ItemFormPage() {
           availableConstruct?.construct_code ||
           null,
         difficulty_level: suggestedDifficulty,
+        construct_blueprint: constructBlueprint?.label || null,
       }
 
       if (profile?.id) {
@@ -779,6 +845,8 @@ export default function ItemFormPage() {
             tingkatan,
             paper,
             section,
+            questionNoReference,
+            construct_blueprint: constructBlueprint?.label || null,
             text: questionText.slice(0, 2500),
           },
           output_snapshot: result,
@@ -787,8 +855,12 @@ export default function ItemFormPage() {
 
       setMetadataSuggestion(
         bestStandard && scoredStandards[0].score > 0
-          ? "Cadangan metadata diisi. Sila semak sebelum simpan."
-          : "Cadangan konstruk dan aras diisi, tetapi standard akademik kurang yakin. Sila pilih Tema/Bidang/SK/SP secara manual.",
+          ? constructBlueprint
+            ? "Cadangan metadata diisi berpandukan taburan format SPM. Sila semak sebelum simpan."
+            : "Cadangan metadata diisi. Sila semak sebelum simpan."
+          : constructBlueprint
+            ? "Cadangan konstruk/aras diisi berpandukan taburan format SPM, tetapi standard akademik kurang yakin. Sila pilih Tema/Bidang/SK/SP secara manual."
+            : "Cadangan konstruk dan aras diisi, tetapi standard akademik kurang yakin. Sila pilih Tema/Bidang/SK/SP secara manual.",
       )
     } catch (error: any) {
       console.error(error)
@@ -1834,6 +1906,12 @@ export default function ItemFormPage() {
                   {suggestingMetadata ? "Menganalisis..." : "Cadang Metadata"}
                 </button>
               </div>
+
+              {constructBlueprint && (
+                <div className="metadata-ai-message">
+                  Rujukan format SPM untuk Soalan {questionNoReference}: {constructBlueprint.label}. Cadangan masih boleh diubah oleh penggubal.
+                </div>
+              )}
 
               {metadataSuggestion && (
                 <div className="metadata-ai-message">{metadataSuggestion}</div>

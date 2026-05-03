@@ -411,6 +411,13 @@ export default function RichEditor({
           Right
         </ToolbarButton>
 
+        <ToolbarButton
+          active={editor.isActive({ textAlign: "justify" })}
+          onClick={() => editor.chain().focus().setTextAlign("justify").run()}
+        >
+          Justify
+        </ToolbarButton>
+
         <ToolbarDivider />
 
         <ToolbarButton onClick={openImagePicker} disabled={uploading}>

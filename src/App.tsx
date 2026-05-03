@@ -15,6 +15,8 @@ import ItemFormPage from './pages/ItemFormPage';
 import BankSoalanAdmin from './pages/BankSoalanAdmin';
 import BuilderSetSoalan from './pages/BuilderSetSoalan';
 import MyProfilePage from './pages/MyProfilePage';
+import SavedSetsPage from './pages/SavedSetsPage';
+import BulkImportPage from './pages/BulkImportPage';
 
 export default function App() {
   const { loading } = useAuth();
@@ -57,7 +59,16 @@ export default function App() {
             </ProtectedAdmin>
           }
         />
+        <Route
+          path="import-pukal"
+          element={
+            <ProtectedAdmin>
+              <BulkImportPage />
+            </ProtectedAdmin>
+          }
+        />
         <Route path="build" element={<Navigate to="/builder-set" replace />} />
+        <Route path="set-saya" element={<SavedSetsPage />} />
         <Route
           path="bank-soalan-admin"
           element={

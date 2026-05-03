@@ -21,8 +21,12 @@ export function AppLayout() {
           <NavLink to="/">Dashboard</NavLink>
           <NavLink to="/profil-saya">Profil Saya</NavLink>
           <NavLink to="/builder-set">Bina Set Soalan</NavLink>
+          <NavLink to="/set-saya">Set Saya</NavLink>
           {(profile?.role === 'admin' || profile?.role === 'master_admin') && (
             <NavLink to="/masukkan-soalan">Masukkan Soalan</NavLink>
+          )}
+          {(profile?.role === 'admin' || profile?.role === 'master_admin') && (
+            <NavLink to="/import-pukal">Import Pukal</NavLink>
           )}
           {(profile?.role === 'admin' || profile?.role === 'master_admin') && (
             <NavLink to="/bank-soalan-admin">Bank Soalan</NavLink>
