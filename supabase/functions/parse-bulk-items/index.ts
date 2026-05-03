@@ -12,6 +12,23 @@ type Profile = {
   status: "active" | "pending" | "suspended"
 }
 
+type AcademicStandard = {
+  tingkatan: number
+  theme_name: string
+  bidang_code: string
+  bidang_name: string
+  standard_kandungan_code: string
+  standard_kandungan_name: string
+  standard_pembelajaran_code: string
+  standard_pembelajaran_name: string
+}
+
+type Construct = {
+  construct_group: string
+  construct_code: string
+  aspect_name: string
+}
+
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
@@ -27,15 +44,26 @@ function startOfMonthIso() {
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString()
 }
 
-function buildPrompt(payload: any) {
+function buildPrompt(payload: any, standards: AcademicStandard[], constructs: Construct[]) {
+  const standardCatalog = standards
+    .map(
+      (s) =>
+        `T${s.tingkatan} | ${s.theme_name} | ${s.bidang_code} ${s.bidang_name} | SK ${s.standard_kandungan_code} ${s.standard_kandungan_name} | SP ${s.standard_pembelajaran_code} ${s.standard_pembelajaran_name}`,
+    )
+    .join("\n")
+
+  const constructCatalog = constructs
+    .map((c) => `${c.construct_code} | ${c.construct_group} | ${c.aspect_name}`)
+    .join("\n")
+
   return `
 Anda ialah pembantu import item Sains SPM KSSM 1511.
-Tugas: pecahkan teks mentah kepada item objektif Kertas 1.
+Tugas: pecahkan teks mentah kepada item objektif Kertas 1 dan cadangkan metadata akademik.
 
 Konteks:
 - Subjek: Sains KSSM SPM 1511
 - Kertas: Kertas 1
-- Tingkatan sasaran: ${payload.tingkatan || "-"}
+- Tingkatan sasaran/fallback: ${payload.tingkatan || "-"}
 - Tetapan bahasa: ${payload.languageMode === "bm_only" ? "Bahasa Melayu sahaja" : "Kekalkan Bahasa Melayu dan Bahasa Inggeris"}
 
 Peraturan penting:
@@ -50,8 +78,18 @@ Peraturan penting:
 - Jangan buang istilah, simbol, label rajah, unit, nama bahan atau perkataan Inggeris yang memang sebahagian kandungan sains.
 - Jika terdapat marker gambar seperti [IMAGE_1], [IMAGE_2], masukkan marker berkaitan dalam array "imageRefs".
 - Padankan marker gambar kepada soalan paling hampir berdasarkan kedudukan marker dalam teks.
-- Jangan masukkan metadata akademik jika tidak pasti.
+- Cadangkan tingkatan berdasarkan topik soalan. Jika tidak pasti, guna tingkatan fallback.
+- Metadata akademik mesti dipilih daripada katalog DSKP yang diberi. Jangan reka kod baharu.
+- Konstruk mesti dipilih daripada katalog konstruk yang diberi. Jangan reka kod baharu.
+- Jika tidak pasti konstruk, gunakan konstruk paling hampir.
+- Aras kesukaran mestilah "rendah", "sederhana" atau "tinggi".
 - Jika dokumen terlalu panjang, ambil maksimum 30 item pertama yang lengkap sahaja.
+
+Katalog DSKP:
+${standardCatalog}
+
+Katalog Konstruk:
+${constructCatalog}
 
 Teks mentah:
 ${payload.rawText || ""}
@@ -89,8 +127,34 @@ const itemSchema = {
             type: "array",
             items: { type: "string" },
           },
+          metadata: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              tingkatan: { type: "integer", enum: [4, 5] },
+              theme_name: { type: "string" },
+              bidang_learning_code: { type: "string" },
+              bidang_learning_name: { type: "string" },
+              standard_kandungan: { type: "string" },
+              standard_pembelajaran: { type: "string" },
+              main_construct: { type: "string" },
+              construct_code: { type: "string" },
+              difficulty_level: { type: "string", enum: ["rendah", "sederhana", "tinggi"] },
+            },
+            required: [
+              "tingkatan",
+              "theme_name",
+              "bidang_learning_code",
+              "bidang_learning_name",
+              "standard_kandungan",
+              "standard_pembelajaran",
+              "main_construct",
+              "construct_code",
+              "difficulty_level",
+            ],
+          },
         },
-        required: ["questionNo", "stem", "options", "answer", "imageRefs"],
+        required: ["questionNo", "stem", "options", "answer", "imageRefs", "metadata"],
       },
     },
   },
@@ -110,6 +174,75 @@ function extractJson(text: string) {
     const match = cleaned.match(/\{[\s\S]*\}/)
     if (!match) throw new Error("AI tidak memulangkan JSON yang sah.")
     return JSON.parse(match[0])
+  }
+}
+
+function normalizeText(value: unknown) {
+  return String(value || "").trim()
+}
+
+function normalizeDifficulty(value: unknown) {
+  const difficulty = normalizeText(value).toLowerCase()
+  return ["rendah", "sederhana", "tinggi"].includes(difficulty) ? difficulty : "sederhana"
+}
+
+function normalizeTingkatan(value: unknown, fallback: number) {
+  const tingkatan = Number(value)
+  if (tingkatan === 4 || tingkatan === 5) return tingkatan
+  return fallback === 5 ? 5 : 4
+}
+
+function findBestStandard(metadata: any, standards: AcademicStandard[], fallbackTingkatan: number) {
+  const spCode = normalizeText(metadata.standard_pembelajaran)
+  const skCode = normalizeText(metadata.standard_kandungan)
+  const bidangCode = normalizeText(metadata.bidang_learning_code)
+  const themeName = normalizeText(metadata.theme_name).toLowerCase()
+  const tingkatan = normalizeTingkatan(metadata.tingkatan, fallbackTingkatan)
+
+  return (
+    standards.find((row) => row.standard_pembelajaran_code === spCode) ||
+    standards.find((row) => row.tingkatan === tingkatan && row.standard_kandungan_code === skCode) ||
+    standards.find((row) => row.tingkatan === tingkatan && row.bidang_code === bidangCode) ||
+    standards.find((row) => row.tingkatan === tingkatan && row.theme_name.toLowerCase() === themeName) ||
+    standards.find((row) => row.tingkatan === tingkatan) ||
+    standards[0]
+  )
+}
+
+function findBestConstruct(metadata: any, constructs: Construct[]) {
+  const constructCode = normalizeText(metadata.construct_code)
+  const mainConstruct = normalizeText(metadata.main_construct).toLowerCase()
+
+  return (
+    constructs.find((row) => row.construct_code === constructCode) ||
+    constructs.find((row) => row.construct_group.toLowerCase() === mainConstruct) ||
+    constructs.find((row) => row.aspect_name.toLowerCase() === mainConstruct) ||
+    constructs[0]
+  )
+}
+
+function normalizeMetadata(
+  metadata: any,
+  fallbackTingkatan: number,
+  standards: AcademicStandard[],
+  constructs: Construct[],
+) {
+  const standard = findBestStandard(metadata, standards, fallbackTingkatan)
+  const construct = findBestConstruct(metadata, constructs)
+
+  return {
+    tingkatan: standard?.tingkatan || normalizeTingkatan(metadata.tingkatan, fallbackTingkatan),
+    theme_name: standard?.theme_name || normalizeText(metadata.theme_name),
+    bidang_learning_code: standard?.bidang_code || normalizeText(metadata.bidang_learning_code),
+    bidang_learning_name: standard?.bidang_name || normalizeText(metadata.bidang_learning_name),
+    standard_kandungan: standard?.standard_kandungan_code || normalizeText(metadata.standard_kandungan),
+    standard_kandungan_name: standard?.standard_kandungan_name || "",
+    standard_pembelajaran: standard?.standard_pembelajaran_code || normalizeText(metadata.standard_pembelajaran),
+    standard_pembelajaran_name: standard?.standard_pembelajaran_name || "",
+    main_construct: construct?.construct_group || normalizeText(metadata.main_construct) || "Mengingat",
+    construct_code: construct?.construct_code || normalizeText(metadata.construct_code),
+    construct_aspect: construct?.aspect_name || "",
+    difficulty_level: normalizeDifficulty(metadata.difficulty_level),
   }
 }
 
@@ -170,6 +303,30 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: "Teks terlalu pendek untuk diproses." }, 400)
     }
 
+    const { data: standards, error: standardsError } = await supabase
+      .from("academic_standards")
+      .select(`
+        tingkatan,
+        theme_name,
+        bidang_code,
+        bidang_name,
+        standard_kandungan_code,
+        standard_kandungan_name,
+        standard_pembelajaran_code,
+        standard_pembelajaran_name
+      `)
+      .order("tingkatan", { ascending: true })
+      .order("standard_pembelajaran_code", { ascending: true })
+
+    if (standardsError) throw standardsError
+
+    const { data: constructs, error: constructsError } = await supabase
+      .from("constructs")
+      .select("construct_group, construct_code, aspect_name")
+      .order("construct_code", { ascending: true })
+
+    if (constructsError) throw constructsError
+
     const openAiResponse = await fetch("https://api.openai.com/v1/responses", {
       method: "POST",
       headers: {
@@ -178,7 +335,7 @@ Deno.serve(async (req) => {
       },
       body: JSON.stringify({
         model: "gpt-4o-mini",
-        input: buildPrompt(payload),
+        input: buildPrompt(payload, (standards || []) as AcademicStandard[], (constructs || []) as Construct[]),
         max_output_tokens: 8000,
         temperature: 0.1,
         text: {
@@ -209,26 +366,32 @@ Deno.serve(async (req) => {
 
     const parsed = extractJson(outputText)
     const items = Array.isArray(parsed.items) ? parsed.items : []
+    const standardRows = ((standards || []) as AcademicStandard[])
+    const constructRows = ((constructs || []) as Construct[])
     const normalized = items
       .filter((item: any) => item?.stem && item?.options)
-      .map((item: any) => ({
-        questionNo: String(item.questionNo || ""),
-        stem: String(item.stem || "").trim(),
-        options: {
-          A: String(item.options?.A || "").trim(),
-          B: String(item.options?.B || "").trim(),
-          C: String(item.options?.C || "").trim(),
-          D: String(item.options?.D || "").trim(),
-        },
-        answer: ["A", "B", "C", "D"].includes(String(item.answer || "").toUpperCase())
-          ? String(item.answer || "").toUpperCase()
-          : "",
-        imageRefs: Array.isArray(item.imageRefs)
-          ? item.imageRefs
-              .map((ref: unknown) => String(ref || "").replace(/[\[\]]/g, "").trim())
-              .filter((ref: string) => /^IMAGE_\d+$/i.test(ref))
-          : [],
-      }))
+      .map((item: any) => {
+        const metadata = normalizeMetadata(item.metadata || {}, Number(payload.tingkatan) || 4, standardRows, constructRows)
+        return {
+          questionNo: String(item.questionNo || ""),
+          stem: String(item.stem || "").trim(),
+          options: {
+            A: String(item.options?.A || "").trim(),
+            B: String(item.options?.B || "").trim(),
+            C: String(item.options?.C || "").trim(),
+            D: String(item.options?.D || "").trim(),
+          },
+          answer: ["A", "B", "C", "D"].includes(String(item.answer || "").toUpperCase())
+            ? String(item.answer || "").toUpperCase()
+            : "",
+          imageRefs: Array.isArray(item.imageRefs)
+            ? item.imageRefs
+                .map((ref: unknown) => String(ref || "").replace(/[\[\]]/g, "").trim())
+                .filter((ref: string) => /^IMAGE_\d+$/i.test(ref))
+            : [],
+          metadata,
+        }
+      })
 
     const tokensUsed =
       (openAiJson.usage?.input_tokens || 0) +

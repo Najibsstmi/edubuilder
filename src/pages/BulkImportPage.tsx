@@ -14,6 +14,18 @@ type DraftItem = {
   options: Record<"A" | "B" | "C" | "D", string>
   answer: "" | "A" | "B" | "C" | "D"
   imageRefs: string[]
+  tingkatan: 4 | 5
+  themeName: string
+  bidangCode: string
+  bidangName: string
+  standardKandungan: string
+  standardKandunganName: string
+  standardPembelajaran: string
+  standardPembelajaranName: string
+  mainConstruct: string
+  constructCode: string
+  constructAspect: string
+  difficultyLevel: "rendah" | "sederhana" | "tinggi"
   selected: boolean
 }
 
@@ -118,6 +130,7 @@ export default function BulkImportPage() {
         },
         answer: item.answer || "",
         imageRefs: Array.isArray(item.imageRefs) ? item.imageRefs : [],
+        ...mapMetadata(item.metadata, tingkatan),
         selected: true,
       })),
     )
@@ -178,7 +191,7 @@ export default function BulkImportPage() {
     try {
       let imported = 0
       for (const item of selected) {
-        const itemCode = generateItemCode(tingkatan)
+        const itemCode = generateItemCode(item.tingkatan)
         const imageUrlByRef = await uploadImagesForItem(item, itemCode, profile.id, extractedImages)
         const { data: insertedItem, error: itemError } = await supabase
           .from("items")
@@ -186,16 +199,21 @@ export default function BulkImportPage() {
             item_code: itemCode,
             created_by: profile.id,
             updated_by: profile.id,
-            tingkatan,
+            tingkatan: item.tingkatan,
             paper: "paper_1",
             section: null,
             question_no_reference: item.questionNo || null,
             item_type: "mcq",
-            main_construct: "Mengingat",
-            construct_code: null,
-            difficulty_level: "sederhana",
+            theme_name: item.themeName || null,
+            bidang_learning_code: item.bidangCode || null,
+            bidang_learning_name: item.bidangName || null,
+            standard_kandungan: item.standardKandungan || null,
+            standard_pembelajaran: item.standardPembelajaran || null,
+            main_construct: item.mainConstruct || "Mengingat",
+            construct_code: item.constructCode || null,
+            difficulty_level: item.difficultyLevel || "sederhana",
             marks: 1,
-            stimulus_type: "text",
+            stimulus_type: item.imageRefs.length > 0 ? "image" : "text",
             stem_text: toHtmlWithImages(item.stem, imageUrlByRef),
             answer_scheme_text: `Jawapan: ${item.answer}`,
             answer_final: item.answer,
@@ -237,7 +255,7 @@ export default function BulkImportPage() {
         <div>
           <h1 className="page-title">Import Pukal AI</h1>
           <p className="page-subtitle">
-            MVP Kertas 1: paste teks soalan, AI pecahkan item, semak, kemudian import sebagai draft.
+            Kertas 1: upload atau paste teks, AI pecahkan item dan cadangkan metadata sebelum import sebagai draft.
           </p>
         </div>
       </div>
@@ -252,7 +270,7 @@ export default function BulkImportPage() {
           </div>
 
           <div className="form-grid form-grid-4">
-            <Field label="Tingkatan">
+            <Field label="Tingkatan fallback">
               <select className="input" value={tingkatan} onChange={(event) => setTingkatan(Number(event.target.value) as 4 | 5)}>
                 <option value={4}>Tingkatan 4</option>
                 <option value={5}>Tingkatan 5</option>
@@ -322,7 +340,7 @@ export default function BulkImportPage() {
           <div className="card-head builder-card-head-row">
             <div>
               <h2>Draft Import</h2>
-              <p>Semak setiap item sebelum masuk ke bank soalan.</p>
+              <p>Semak item, tingkatan dan metadata cadangan AI sebelum masuk ke bank soalan.</p>
             </div>
             <button
               type="button"
@@ -362,6 +380,16 @@ export default function BulkImportPage() {
                         onChange={(event) => updateDraft(item.id, { questionNo: event.target.value })}
                       />
                     </Field>
+                    <Field label="Tingkatan AI">
+                      <select
+                        className="input"
+                        value={item.tingkatan}
+                        onChange={(event) => updateDraft(item.id, { tingkatan: Number(event.target.value) as 4 | 5 })}
+                      >
+                        <option value={4}>Tingkatan 4</option>
+                        <option value={5}>Tingkatan 5</option>
+                      </select>
+                    </Field>
                     <Field label="Jawapan Betul">
                       <select
                         className="input"
@@ -374,6 +402,72 @@ export default function BulkImportPage() {
                             {label}
                           </option>
                         ))}
+                      </select>
+                    </Field>
+                  </div>
+
+                  <div className="bulk-metadata-grid">
+                    <Field label="Tema">
+                      <input className="input" value={item.themeName} onChange={(event) => updateDraft(item.id, { themeName: event.target.value })} />
+                    </Field>
+                    <Field label="Bidang">
+                      <input
+                        className="input"
+                        value={formatCodeName(item.bidangCode, item.bidangName)}
+                        onChange={(event) => {
+                          const parsed = splitCodeName(event.target.value)
+                          updateDraft(item.id, { bidangCode: parsed.code, bidangName: parsed.name })
+                        }}
+                      />
+                    </Field>
+                    <Field label="SK">
+                      <input
+                        className="input"
+                        value={formatCodeName(item.standardKandungan, item.standardKandunganName)}
+                        onChange={(event) => {
+                          const parsed = splitCodeName(event.target.value)
+                          updateDraft(item.id, { standardKandungan: parsed.code, standardKandunganName: parsed.name })
+                        }}
+                      />
+                    </Field>
+                    <Field label="SP">
+                      <input
+                        className="input"
+                        value={formatCodeName(item.standardPembelajaran, item.standardPembelajaranName)}
+                        onChange={(event) => {
+                          const parsed = splitCodeName(event.target.value)
+                          updateDraft(item.id, { standardPembelajaran: parsed.code, standardPembelajaranName: parsed.name })
+                        }}
+                      />
+                    </Field>
+                    <Field label="Konstruk">
+                      <input
+                        className="input"
+                        value={item.mainConstruct}
+                        onChange={(event) => updateDraft(item.id, { mainConstruct: event.target.value })}
+                      />
+                    </Field>
+                    <Field label="Kod Konstruk">
+                      <input
+                        className="input"
+                        value={formatCodeName(item.constructCode, item.constructAspect)}
+                        onChange={(event) => {
+                          const parsed = splitCodeName(event.target.value)
+                          updateDraft(item.id, { constructCode: parsed.code, constructAspect: parsed.name })
+                        }}
+                      />
+                    </Field>
+                    <Field label="Aras">
+                      <select
+                        className="input"
+                        value={item.difficultyLevel}
+                        onChange={(event) =>
+                          updateDraft(item.id, { difficultyLevel: event.target.value as DraftItem["difficultyLevel"] })
+                        }
+                      >
+                        <option value="rendah">rendah</option>
+                        <option value="sederhana">sederhana</option>
+                        <option value="tinggi">tinggi</option>
                       </select>
                     </Field>
                   </div>
@@ -437,6 +531,58 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 function generateItemCode(tingkatan: 4 | 5) {
   const random = Math.random().toString(36).slice(2, 7).toUpperCase()
   return `SCI-K1-T${tingkatan}-AI${random}`
+}
+
+function mapMetadata(metadata: any, fallbackTingkatan: 4 | 5): Pick<
+  DraftItem,
+  | "tingkatan"
+  | "themeName"
+  | "bidangCode"
+  | "bidangName"
+  | "standardKandungan"
+  | "standardKandunganName"
+  | "standardPembelajaran"
+  | "standardPembelajaranName"
+  | "mainConstruct"
+  | "constructCode"
+  | "constructAspect"
+  | "difficultyLevel"
+> {
+  return {
+    tingkatan: metadata?.tingkatan === 5 ? 5 : metadata?.tingkatan === 4 ? 4 : fallbackTingkatan,
+    themeName: metadata?.theme_name || "",
+    bidangCode: metadata?.bidang_learning_code || "",
+    bidangName: metadata?.bidang_learning_name || "",
+    standardKandungan: metadata?.standard_kandungan || "",
+    standardKandunganName: metadata?.standard_kandungan_name || "",
+    standardPembelajaran: metadata?.standard_pembelajaran || "",
+    standardPembelajaranName: metadata?.standard_pembelajaran_name || "",
+    mainConstruct: metadata?.main_construct || "Mengingat",
+    constructCode: metadata?.construct_code || "",
+    constructAspect: metadata?.construct_aspect || "",
+    difficultyLevel: normalizeDifficulty(metadata?.difficulty_level),
+  }
+}
+
+function normalizeDifficulty(value: unknown): DraftItem["difficultyLevel"] {
+  return value === "rendah" || value === "tinggi" || value === "sederhana" ? value : "sederhana"
+}
+
+function formatCodeName(code: string, name: string) {
+  if (code && name) return `${code} : ${name}`
+  return code || name || ""
+}
+
+function splitCodeName(value: string) {
+  const [code, ...nameParts] = value.split(/\s*:\s*/)
+  if (nameParts.length === 0) {
+    return { code: value.trim(), name: "" }
+  }
+
+  return {
+    code: code.trim(),
+    name: nameParts.join(" : ").trim(),
+  }
 }
 
 async function extractDocx(file: File) {
