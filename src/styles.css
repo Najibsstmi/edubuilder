@@ -1226,6 +1226,78 @@ th, td { padding: 12px; border-bottom: 1px solid #e2e8f0; text-align: left; }
   }
 }
 
+.question-paper-subquestion {
+  display: grid;
+  grid-template-columns: 64px 1fr;
+  gap: 10px;
+  margin-top: 14px;
+  align-items: start;
+}
+
+.question-paper-subquestion-label {
+  font-weight: 600;
+  white-space: nowrap;
+  line-height: 1.5;
+}
+
+.question-paper-subquestion-content p:first-child {
+  margin-top: 0;
+}
+
+.question-paper-subquestion-content p {
+  margin-bottom: 8px;
+}
+
+.question-paper-subquestion-content {
+  position: relative;
+  width: 100%;
+}
+
+.answer-space {
+  margin-top: 10px;
+  padding-right: 80px;
+}
+
+.answer-line {
+  border-bottom: 1px dotted #111827;
+  height: 24px;
+  width: 100%;
+}
+
+.answer-box {
+  padding-top: 4px;
+}
+
+.answer-drawing-box {
+  margin-top: 10px;
+  min-height: 120px;
+  border: 1px solid #111827;
+}
+
+.question-paper-subquestion-marks {
+  text-align: right;
+  font-weight: 600;
+  margin-top: 4px;
+}
+
+.question-paper-section {
+  margin-top: 20px;
+}
+
+.section-header {
+  margin-bottom: 8px;
+}
+
+.section-instruction {
+  font-size: 13px;
+  margin-top: 2px;
+}
+
+.question-number {
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
 @media print {
   @page {
     margin: 2.4cm 2cm 2cm 2cm;

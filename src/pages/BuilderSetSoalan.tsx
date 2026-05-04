@@ -27,12 +27,17 @@ type Item = {
   bidang_learning_code: string | null
   bidang_learning_name: string | null
   main_construct: string | null
+  construct_code: string | null
   difficulty_level: DifficultyType | null
   marks: number
   stem_text: string | null
+  question_instruction: string | null
+  answer_scheme_text: string | null
+  answer_final: string | null
   status: string
   created_at: string
   item_options?: ItemOption[]
+  item_subquestions?: ItemSubQuestion[]
 }
 
 type ItemOption = {
@@ -40,6 +45,20 @@ type ItemOption = {
   option_text: string | null
   option_image_url: string | null
   display_order: number
+}
+
+type ItemSubQuestion = {
+  id: string
+  label: string
+  sub_label: string | null
+  question_text: string
+  answer_scheme_text: string
+  marks: number
+  response_type: string
+  display_order: number
+  main_construct: string | null
+  construct_code: string | null
+  difficulty_level: DifficultyType | null
 }
 
 type Distribution = Record<DifficultyType, number>
@@ -87,7 +106,7 @@ export default function BuilderSetSoalan() {
 
   const bidangOptions = useMemo(() => {
     const source = items.filter(
-      (item) => tingkatanValues.includes(item.tingkatan) && item.paper === "paper_1",
+      (item) => tingkatanValues.includes(item.tingkatan) && item.paper === paper,
     )
     const map = new Map<string, { key: string; tingkatan: 4 | 5; code: string; name: string; count: number }>()
 
@@ -109,13 +128,15 @@ export default function BuilderSetSoalan() {
       if (a.tingkatan !== b.tingkatan) return a.tingkatan - b.tingkatan
       return naturalCodeSort(a.code, b.code)
     })
-  }, [items, tingkatanValues])
+  }, [items, paper, tingkatanValues])
 
   const customPool = useMemo(() => {
     let pool = baseAvailableItems
 
-    if (mode === "custom" && paper === "paper_1") {
-      pool = pool.filter((item) => item.item_type === "mcq")
+    if (mode === "custom") {
+      if (paper === "paper_1") {
+        pool = pool.filter((item) => item.item_type === "mcq")
+      }
 
       if (selectedBidangCodes.length > 0) {
         pool = pool.filter((item) =>
@@ -163,9 +184,13 @@ export default function BuilderSetSoalan() {
         bidang_learning_code,
         bidang_learning_name,
         main_construct,
+        construct_code,
         difficulty_level,
         marks,
         stem_text,
+        question_instruction,
+        answer_scheme_text,
+        answer_final,
         status,
         created_at,
         item_options (
@@ -173,6 +198,19 @@ export default function BuilderSetSoalan() {
           option_text,
           option_image_url,
           display_order
+        ),
+        item_subquestions (
+          id,
+          label,
+          sub_label,
+          question_text,
+          answer_scheme_text,
+          marks,
+          response_type,
+          display_order,
+          main_construct,
+          construct_code,
+          difficulty_level
         )
       `)
       .eq("status", "published")
@@ -262,11 +300,6 @@ export default function BuilderSetSoalan() {
   }
 
   function buildCustom() {
-    if (paper !== "paper_1") {
-      setMessage("Versi latihan custom ini difokuskan kepada Kertas 1 dahulu.")
-      return
-    }
-
     if (totalSoalan < 1) {
       setMessage("Bilangan soalan mesti sekurang-kurangnya 1.")
       return
@@ -307,19 +340,32 @@ export default function BuilderSetSoalan() {
     }
 
     const pool = baseAvailableItems
+
     const partA = shuffle(pool.filter((item) => item.section === "A")).slice(0, 4)
     const partB = shuffle(pool.filter((item) => item.section === "B")).slice(0, 6)
-    const question11 = pool.find((item) => item.question_no_reference === "11")
-    const question12 = pool.find((item) => item.question_no_reference === "12")
-    const question13 = pool.find((item) => item.question_no_reference === "13")
-    const selectedChoice = question12 ?? question13
 
-    if (partA.length < 4 || partB.length < 6 || !question11 || !selectedChoice) {
+    const q11Pool = pool.filter((item) => item.question_no_reference === "11")
+    const q12Pool = pool.filter((item) => item.question_no_reference === "12")
+    const q13Pool = pool.filter((item) => item.question_no_reference === "13")
+
+    const question11 = shuffle(q11Pool)[0]
+    const question12 = shuffle(q12Pool)[0]
+    const question13 = shuffle(q13Pool)[0]
+
+    if (partA.length < 4 || partB.length < 6 || !question11 || !question12 || !question13) {
       setMessage("Item published tidak cukup untuk format SPM Kertas 2.")
       return
     }
 
-    setGeneratedSet([...partA, ...partB, question11, selectedChoice])
+    // Papar semua 3 (biar murid pilih dalam kertas)
+    setGeneratedSet([
+      ...partA,
+      ...partB,
+      question11,
+      question12,
+      question13,
+    ])
+
     setMessage("Set format SPM Kertas 2 dijana.")
   }
 
@@ -462,7 +508,7 @@ export default function BuilderSetSoalan() {
         <div>
           <h1 className="page-title">Bina Set Soalan</h1>
           <p className="page-subtitle">
-            Jana latihan Kertas 1 berdasarkan tingkatan, bab/bidang dan aras kesukaran.
+            Jana latihan atau set peperiksaan Sains KSSM berdasarkan tingkatan, kertas, bahagian dan aras kesukaran.
           </p>
         </div>
       </div>
@@ -496,7 +542,7 @@ export default function BuilderSetSoalan() {
             <div className="card-head">
               <h2>Tetapan Set</h2>
               <p>
-                Untuk fasa ini, latihan custom difokuskan kepada item objektif Kertas 1.
+                Pilih tetapan set latihan atau format peperiksaan sebelum menjana soalan.
               </p>
             </div>
 
@@ -627,12 +673,12 @@ export default function BuilderSetSoalan() {
             )}
           </section>
 
-          {mode === "custom" && paper === "paper_1" && (
+          {mode === "custom" && (
             <section className="card-block">
               <div className="card-head builder-card-head-row">
                 <div>
                   <h2>Bab / Bidang Pembelajaran</h2>
-                  <p>Tick bidang yang ingin dimasukkan dalam latihan.</p>
+                  <p>Tick bidang yang ingin dimasukkan dalam latihan {paper === "paper_1" ? "Kertas 1" : "Kertas 2"}.</p>
                 </div>
                 <div className="action-row">
                   <button type="button" className="btn btn-light btn-sm" onClick={selectAllBidang}>
@@ -645,7 +691,7 @@ export default function BuilderSetSoalan() {
               </div>
 
               {bidangOptions.length === 0 ? (
-                <div className="empty-state">Tiada item Kertas 1 published untuk tingkatan ini.</div>
+                <div className="empty-state">Tiada item published untuk tetapan kertas dan tingkatan ini.</div>
               ) : (
                 <div className="builder-topic-grid">
                   {bidangOptions.map((option) => (
@@ -753,43 +799,114 @@ export default function BuilderSetSoalan() {
                   </span>
                 </div>
 
-                <ol className="question-paper-list">
-                  {generatedSet.map((item, index) => (
-                    <li key={`paper-${item.id}-${index}`} className="question-paper-item">
-                      <div
-                        className="question-paper-stem"
-                        dangerouslySetInnerHTML={{ __html: item.stem_text || "" }}
-                      />
+                {paper === "paper_2" ? (
+                  <div className="question-paper-sections">
+                    {Object.entries(groupBySection(generatedSet)).map(([section, items]) => {
+                      if (items.length === 0) return null
 
-                      {paper === "paper_1" && (
-                        <div className="question-paper-options">
-                          {sortOptions(item.item_options).map((option) => (
-                            <div
-                              key={`${item.id}-${option.option_label}`}
-                              className="question-paper-option"
-                            >
-                              <strong>{option.option_label}.</strong>
-                              <div>
-                                {option.option_text && (
-                                  <div
-                                    className="question-paper-option-text"
-                                    dangerouslySetInnerHTML={{ __html: option.option_text }}
-                                  />
-                                )}
-                                {option.option_image_url && (
-                                  <img
-                                    src={option.option_image_url}
-                                    alt={`Pilihan ${option.option_label}`}
-                                  />
-                                )}
-                              </div>
+                      return (
+                        <div key={section} className="question-paper-section">
+                          <div className="section-header">
+                            <strong>Bahagian {section}</strong>
+
+                            <div className="section-instruction">
+                              {section === "C"
+                                ? "Jawab Soalan 11 dan sama ada Soalan 12 atau Soalan 13."
+                                : "Jawab semua soalan."}
                             </div>
-                          ))}
+                          </div>
+
+                          <ol className="question-paper-list">
+                            {items.map((item, index) => {
+                              const questionNo =
+                                item.question_no_reference || `${index + 1}`
+
+                              return (
+                                <li key={`${item.id}-${index}`} className="question-paper-item">
+                                  <div className="question-number">
+                                    {questionNo}.
+                                  </div>
+
+                                  <div
+                                    className="question-paper-stem"
+                                    dangerouslySetInnerHTML={{ __html: item.stem_text || "" }}
+                                  />
+
+                                  {/* subquestions kekal sini */}
+                                  <div className="question-paper-sub-wrapper">
+                                    <div className="question-paper-subquestions">
+                                      {sortSubQuestions(item.item_subquestions).map((sub) => (
+                                        <div key={sub.id} className="question-paper-subquestion">
+                                          <div className="question-paper-subquestion-label">
+                                            ({sub.label}){sub.sub_label ? `(${sub.sub_label})` : ""}
+                                          </div>
+
+                                          <div className="question-paper-subquestion-content">
+                                            <div
+                                              dangerouslySetInnerHTML={{ __html: sub.question_text || "" }}
+                                            />
+
+                                            {shouldShowAnswerSpace(item, sub) && (
+                                              <AnswerSpace responseType={sub.response_type} />
+                                            )}
+
+                                            {!isInstructionSubQuestionPreview(sub) && (
+                                              <div className="question-paper-subquestion-marks">
+                                                [{sub.marks} markah]
+                                              </div>
+                                            )}
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                </li>
+                              )
+                            })}
+                          </ol>
                         </div>
-                      )}
-                    </li>
-                  ))}
-                </ol>
+                      )
+                    })}
+                  </div>
+                ) : (
+                  <ol className="question-paper-list">
+                    {generatedSet.map((item, index) => (
+                      <li key={`paper-${item.id}-${index}`} className="question-paper-item">
+                        <div
+                          className="question-paper-stem"
+                          dangerouslySetInnerHTML={{ __html: item.stem_text || "" }}
+                        />
+
+                        {paper === "paper_1" && (
+                          <div className="question-paper-options">
+                            {sortOptions(item.item_options).map((option) => (
+                              <div
+                                key={`${item.id}-${option.option_label}`}
+                                className="question-paper-option"
+                              >
+                                <strong>{option.option_label}.</strong>
+                                <div>
+                                  {option.option_text && (
+                                    <div
+                                      className="question-paper-option-text"
+                                      dangerouslySetInnerHTML={{ __html: option.option_text }}
+                                    />
+                                  )}
+                                  {option.option_image_url && (
+                                    <img
+                                      src={option.option_image_url}
+                                      alt={`Pilihan ${option.option_label}`}
+                                    />
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </li>
+                    ))}
+                  </ol>
+                )}
               </div>
             </section>
           )}
@@ -854,6 +971,71 @@ function sortOptions(options: ItemOption[] = []) {
     if (a.display_order !== b.display_order) return a.display_order - b.display_order
     return a.option_label.localeCompare(b.option_label)
   })
+}
+
+function sortSubQuestions(subquestions: ItemSubQuestion[] = []) {
+  return [...subquestions].sort((a, b) => {
+    if (a.display_order !== b.display_order) return a.display_order - b.display_order
+    return a.label.localeCompare(b.label)
+  })
+}
+
+function isInstructionSubQuestionPreview(sub: ItemSubQuestion) {
+  return sub.response_type === "instruction" || sub.marks === 0
+}
+
+function shouldShowAnswerSpace(item: Item, sub: ItemSubQuestion) {
+  if (isInstructionSubQuestionPreview(sub)) return false
+  return item.section === "A" || item.section === "B"
+}
+
+function AnswerSpace({ responseType }: { responseType: string }) {
+  if (responseType === "structured_text") {
+    return (
+      <div className="answer-space">
+        <div className="answer-line" />
+        <div className="answer-line" />
+      </div>
+    )
+  }
+
+  if (responseType === "table") {
+    return (
+      <div className="answer-space answer-box">
+        <div className="answer-line" />
+        <div className="answer-line" />
+        <div className="answer-line" />
+      </div>
+    )
+  }
+
+  if (responseType === "drawing" || responseType === "design") {
+    return <div className="answer-drawing-box" />
+  }
+
+  if (responseType === "calculation") {
+    return (
+      <div className="answer-space">
+        <div className="answer-line" />
+        <div className="answer-line" />
+        <div className="answer-line" />
+      </div>
+    )
+  }
+
+  return (
+    <div className="answer-space">
+      <div className="answer-line" />
+    </div>
+  )
+}
+
+function groupBySection(items: Item[]) {
+  return {
+    A: items.filter(i => i.section === "A"),
+    B: items.filter(i => i.section === "B"),
+    C: items.filter(i => i.section === "C"),
+  }
 }
 
 function getBidangKey(item: Pick<Item, "tingkatan" | "bidang_learning_code">) {
