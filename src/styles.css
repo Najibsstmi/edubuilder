@@ -81,7 +81,7 @@ textarea { resize: vertical; }
   font-size: 0.92rem;
 }
 
-.app-shell {
+..app-shell {
   min-height: 100vh;
   display: grid;
   grid-template-columns: 280px 1fr;
@@ -949,14 +949,22 @@ th, td { padding: 12px; border-bottom: 1px solid #e2e8f0; text-align: left; }
 
 .saved-sets-layout {
   display: grid;
+  grid-template-columns: 280px 1fr;
+  align-items: start;
   gap: 20px;
-  grid-template-columns: minmax(280px, 0.7fr) minmax(0, 1.8fr);
 }
 
 .saved-sets-list {
   align-self: start;
   position: sticky;
   top: 20px;
+  height: fit-content;
+}
+
+.question-total-marks {
+  text-align: right;
+  font-weight: 700;
+  margin-top: 6px;
 }
 
 .saved-set-buttons {
@@ -1256,6 +1264,12 @@ th, td { padding: 12px; border-bottom: 1px solid #e2e8f0; text-align: left; }
 .answer-space {
   margin-top: 10px;
   padding-right: 80px;
+}
+
+.answer-table-box {
+  margin-top: 10px;
+  border: 1px solid #111827;
+  min-height: 80px;
 }
 
 .answer-line {

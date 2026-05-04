@@ -30,6 +30,7 @@ type SavedItem = {
   stem_text: string | null
   answer_scheme_text: string | null
   paper: PaperType
+  section: "A" | "B" | "C" | null
   tingkatan: number
   marks: number
   item_options?: ItemOption[]
@@ -118,6 +119,7 @@ export default function SavedSetsPage() {
               option_image_url,
               display_order
             ),
+            section,
             item_subquestions (
               id,
               label,
@@ -375,6 +377,12 @@ function SetPaperPreview({ set, items }: { set: SavedSet; items: NormalizedSetIt
                   ))}
                 </div>
               )}
+
+              {set.paper === "paper_2" && (
+                <div className="question-total-marks">
+                  [Jumlah: {row.item?.item_subquestions?.reduce((sum, s) => sum + (s.marks || 0), 0) || row.marks} markah]
+                </div>
+              )}
             </li>
           ))}
         </ol>
@@ -389,7 +397,16 @@ function normalizeItems(set: SavedSet | null): NormalizedSetItem[] {
   if (!set?.build_set_items) return []
 
   return [...set.build_set_items]
-    .sort((a, b) => a.display_order - b.display_order)
+    .sort((a, b) => {
+      const sectionOrder = { A: 1, B: 2, C: 3 }
+
+      const secA = sectionOrder[a.section as "A" | "B" | "C"] || 99
+      const secB = sectionOrder[b.section as "A" | "B" | "C"] || 99
+
+      if (secA !== secB) return secA - secB
+
+      return a.display_order - b.display_order
+    })
     .map((row, index) => ({
       id: row.id,
       display_order: row.display_order,
@@ -420,10 +437,31 @@ function isInstructionSubQuestionPreview(sub: ItemSubQuestion) {
 function shouldShowAnswerSpace(item: SavedItem | null, sub: ItemSubQuestion) {
   if (!item) return false
   if (isInstructionSubQuestionPreview(sub)) return false
-  return item.paper === "paper_2"
+  if (item.section === "C") return false
+  return item.section === "A" || item.section === "B"
 }
 
 function AnswerSpace({ responseType }: { responseType: string }) {
+  if (responseType === "instruction") return null
+
+  if (responseType === "drawing" || responseType === "design") {
+    return null
+  }
+
+  if (responseType === "table") {
+    return <div className="answer-table-box" />
+  }
+
+  if (responseType === "calculation") {
+    return (
+      <div className="answer-space">
+        <div className="answer-line" />
+        <div className="answer-line" />
+        <div className="answer-line" />
+      </div>
+    )
+  }
+
   if (responseType === "structured_text") {
     return (
       <div className="answer-space">
@@ -431,20 +469,6 @@ function AnswerSpace({ responseType }: { responseType: string }) {
         <div className="answer-line" />
       </div>
     )
-  }
-
-  if (responseType === "table" || responseType === "calculation") {
-    return (
-      <div className="answer-space">
-        <div className="answer-line" />
-        <div className="answer-line" />
-        <div className="answer-line" />
-      </div>
-    )
-  }
-
-  if (responseType === "drawing" || responseType === "design") {
-    return <div className="answer-drawing-box" />
   }
 
   return (
