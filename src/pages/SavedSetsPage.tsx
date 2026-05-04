@@ -18,6 +18,7 @@ type SavedSet = {
 
 type SavedSetItemRow = {
   id: string
+  section: "A" | "B" | "C" | null
   display_order: number
   custom_question_no: string | null
   marks: number
@@ -33,6 +34,7 @@ type SavedItem = {
   section: "A" | "B" | "C" | null
   tingkatan: number
   marks: number
+  question_no_reference: string | null
   item_options?: ItemOption[]
   item_subquestions?: ItemSubQuestion[]
 }
@@ -70,6 +72,7 @@ export default function SavedSetsPage() {
   const [loading, setLoading] = useState(true)
   const [deletingSetId, setDeletingSetId] = useState("")
   const [message, setMessage] = useState("")
+  const [printMode, setPrintMode] = useState<"question" | "scheme">("question")
 
   useEffect(() => {
     void fetchSets()
@@ -102,6 +105,7 @@ export default function SavedSetsPage() {
         created_at,
         build_set_items (
           id,
+          section,
           display_order,
           custom_question_no,
           marks,
@@ -113,13 +117,14 @@ export default function SavedSetsPage() {
             paper,
             tingkatan,
             marks,
+            question_no_reference,
+            section,
             item_options (
               option_label,
               option_text,
               option_image_url,
               display_order
             ),
-            section,
             item_subquestions (
               id,
               label,
@@ -209,6 +214,32 @@ export default function SavedSetsPage() {
     URL.revokeObjectURL(url)
   }
 
+  async function downloadSchemeWord() {
+    if (!selectedSet) return
+
+    const html = buildSchemeWordHtml(selectedSet, selectedItems)
+    const blob = new Blob([html], { type: "application/msword;charset=utf-8" })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement("a")
+
+    link.href = url
+    link.download = `${slugify(selectedSet.title)}-skema.doc`
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    URL.revokeObjectURL(url)
+  }
+
+  function printPdf() {
+    setPrintMode("question")
+    setTimeout(() => window.print(), 100)
+  }
+
+  function printScheme() {
+    setPrintMode("scheme")
+    setTimeout(() => window.print(), 100)
+  }
+
   return (
     <div className="page-shell saved-sets-page">
       <div className="page-header saved-sets-header">
@@ -280,25 +311,45 @@ export default function SavedSetsPage() {
               </button>
               <button
                 type="button"
-                className="btn btn-light"
+                className="btn btn-question"
                 onClick={printPdf}
                 disabled={!selectedSet}
               >
-                Cetak / Simpan PDF
+                🖨️ Cetak Soalan
               </button>
               <button
                 type="button"
-                className="btn btn-primary"
+                className="btn btn-question"
                 onClick={() => void downloadWord()}
                 disabled={!selectedSet}
               >
-                Muat Turun Word
+                📄 Word Soalan
+              </button>
+              <button
+                type="button"
+                className="btn btn-scheme"
+                onClick={printScheme}
+                disabled={!selectedSet}
+              >
+                🖨️ Cetak Skema
+              </button>
+              <button
+                type="button"
+                className="btn btn-scheme"
+                onClick={() => void downloadSchemeWord()}
+                disabled={!selectedSet}
+              >
+                ✅ Word Skema
               </button>
             </div>
           </section>
 
           {selectedSet ? (
-            <SetPaperPreview set={selectedSet} items={selectedItems} />
+            printMode === "scheme" ? (
+              <SchemePreview set={selectedSet} items={selectedItems} />
+            ) : (
+              <SetPaperPreview set={selectedSet} items={selectedItems} />
+            )
           ) : (
             <section className="card-block">
               <div className="empty-state">Tiada set dipilih.</div>
@@ -393,27 +444,121 @@ function SetPaperPreview({ set, items }: { set: SavedSet; items: NormalizedSetIt
   )
 }
 
+function SchemePreview({ set, items }: { set: SavedSet; items: NormalizedSetItem[] }) {
+  return (
+    <section className="card-block set-print-area">
+      <div className="question-paper-preview">
+        <div className="question-paper-head">
+          <strong>Panduan Pemarkahan</strong>
+          <span>{set.title || "Set Soalan"}</span>
+          <span>Sains KSSM</span>
+        </div>
+
+        <div className="scheme-list">
+          {items.map((row) => (
+            <div key={row.id} className="scheme-item">
+              <h3>Soalan {row.custom_question_no}</h3>
+
+              {set.paper === "paper_2" ? (
+                <table className="scheme-table">
+                  <thead>
+                    <tr>
+                      <th>Sub-soalan</th>
+                      <th>Cadangan Jawapan</th>
+                      <th>Markah</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sortSubQuestions(row.item?.item_subquestions).map((sub) => (
+                      <tr key={sub.id}>
+                        <td>
+                          ({sub.label}){sub.sub_label ? `(${sub.sub_label})` : ""}
+                        </td>
+                        <td>{sub.answer_scheme_text || "-"}</td>
+                        <td>{sub.marks}</td>
+                      </tr>
+                    ))}
+                    <tr>
+                      <th>Jumlah</th>
+                      <td></td>
+                      <th>
+                        {sortSubQuestions(row.item?.item_subquestions).reduce(
+                          (sum, sub) => sum + (sub.marks || 0),
+                          0,
+                        ) || row.marks}
+                      </th>
+                    </tr>
+                  </tbody>
+                </table>
+              ) : (
+                <div className="scheme-answer">
+                  {row.item?.answer_scheme_text || "-"}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  )
+}
+
 function normalizeItems(set: SavedSet | null): NormalizedSetItem[] {
   if (!set?.build_set_items) return []
 
+  const sectionOrder: Record<string, number> = {
+    A: 1,
+    B: 2,
+    C: 3,
+  }
+
+  function getQuestionNo(row: SavedSetItemRow) {
+    const item = Array.isArray(row.items) ? row.items[0] || null : row.items
+
+    // Untuk Kertas 2, nombor rasmi perlu ikut question_no_reference
+    const fromItemRef = Number((item as any)?.question_no_reference)
+    if (Number.isFinite(fromItemRef) && fromItemRef > 0) return fromItemRef
+
+    // Custom number hanya fallback
+    const fromCustom = Number(row.custom_question_no)
+    if (Number.isFinite(fromCustom) && fromCustom > 0) return fromCustom
+
+    return row.display_order || 999
+  }
+
   return [...set.build_set_items]
     .sort((a, b) => {
-      const sectionOrder = { A: 1, B: 2, C: 3 }
+      const aSection = a.section || ""
+      const bSection = b.section || ""
 
-      const secA = sectionOrder[a.section as "A" | "B" | "C"] || 99
-      const secB = sectionOrder[b.section as "A" | "B" | "C"] || 99
+      const aSectionOrder = sectionOrder[aSection] || 99
+      const bSectionOrder = sectionOrder[bSection] || 99
 
-      if (secA !== secB) return secA - secB
+      if (aSectionOrder !== bSectionOrder) {
+        return aSectionOrder - bSectionOrder
+      }
+
+      const aQuestionNo = getQuestionNo(a)
+      const bQuestionNo = getQuestionNo(b)
+
+      if (aQuestionNo !== bQuestionNo) {
+        return aQuestionNo - bQuestionNo
+      }
 
       return a.display_order - b.display_order
     })
-    .map((row, index) => ({
-      id: row.id,
-      display_order: row.display_order,
-      custom_question_no: row.custom_question_no || String(index + 1),
-      marks: row.marks,
-      item: Array.isArray(row.items) ? row.items[0] || null : row.items,
-    }))
+    .map((row, index) => {
+      const item = Array.isArray(row.items) ? row.items[0] || null : row.items
+      const questionNo = getQuestionNo(row)
+
+      return {
+        id: row.id,
+        display_order: row.display_order,
+        custom_question_no: String(index + 1),
+        marks: row.marks,
+        item,
+      }
+    })
 }
 
 function sortOptions(options: ItemOption[] = []) {
@@ -647,6 +792,153 @@ function buildWordHtml(set: SavedSet, items: NormalizedSetItem[]) {
       )
       .join("")}
   </table>
+</div>
+</body>
+</html>`
+}
+
+function buildSchemeWordHtml(set: SavedSet, items: NormalizedSetItem[]) {
+  return `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Panduan Pemarkahan - ${escapeHtml(set.title)}</title>
+  <style>
+    @page Section1 {
+      size: 21cm 29.7cm;
+      margin: 2cm 2cm 2cm 2cm;
+      mso-paper-source: 0;
+    }
+
+    div.Section1 { page: Section1; }
+
+    body {
+      color: #000000;
+      font-family: "Times New Roman", Times, serif;
+      font-size: 12pt;
+      line-height: 1.15;
+      margin: 0;
+    }
+
+    .head {
+      border-bottom: 1px solid #bfbfbf;
+      margin-bottom: 16pt;
+      padding-bottom: 10pt;
+      text-align: center;
+    }
+
+    .head h1 {
+      font-size: 12pt;
+      font-weight: bold;
+      margin: 0 0 4pt;
+      text-transform: uppercase;
+    }
+
+    .head div {
+      font-size: 12pt;
+      margin: 0;
+    }
+
+    h2 {
+      font-size: 12pt;
+      margin: 14pt 0 6pt;
+    }
+
+    table {
+      border-collapse: collapse;
+      margin-bottom: 14pt;
+      width: 100%;
+    }
+
+    th,
+    td {
+      border: 1px solid #000000;
+      padding: 5pt 6pt;
+      vertical-align: top;
+    }
+
+    th {
+      font-weight: bold;
+      text-align: left;
+    }
+
+    .sub-col {
+      width: 70pt;
+    }
+
+    .mark-col {
+      text-align: center;
+      width: 55pt;
+    }
+
+    .total-row th {
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+<div class="Section1">
+  <div class="head">
+    <h1>Panduan Pemarkahan</h1>
+    <div>${escapeHtml(set.title || "Set Soalan")}</div>
+    <div>Sains KSSM</div>
+    <div>${set.tingkatan ? `Tingkatan ${set.tingkatan}` : "Tingkatan 4 dan 5"}</div>
+  </div>
+
+  ${items
+    .map((row) => {
+      const subs = sortSubQuestions(row.item?.item_subquestions)
+      const total =
+        subs.reduce((sum, sub) => sum + (sub.marks || 0), 0) || row.marks
+
+      if (set.paper === "paper_2") {
+        return `
+          <h2>Soalan ${escapeHtml(row.custom_question_no)}</h2>
+          <table>
+            <thead>
+              <tr>
+                <th class="sub-col">Sub-soalan</th>
+                <th>Cadangan Jawapan</th>
+                <th class="mark-col">Markah</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${subs
+                .map(
+                  (sub) => `
+                    <tr>
+                      <td>(${escapeHtml(sub.label)})${
+                        sub.sub_label ? `(${escapeHtml(sub.sub_label)})` : ""
+                      }</td>
+                      <td>${escapeHtml(sub.answer_scheme_text || "-").replace(/\n/g, "<br />")}</td>
+                      <td class="mark-col">${sub.marks}</td>
+                    </tr>
+                  `,
+                )
+                .join("")}
+              <tr class="total-row">
+                <th>Jumlah</th>
+                <td></td>
+                <th class="mark-col">${total}</th>
+              </tr>
+            </tbody>
+          </table>
+        `
+      }
+
+      return `
+        <h2>Soalan ${escapeHtml(row.custom_question_no)}</h2>
+        <table>
+          <tbody>
+            <tr>
+              <th>Jawapan</th>
+              <td>${escapeHtml(row.item?.answer_scheme_text || "-").replace(/\n/g, "<br />")}</td>
+            </tr>
+          </tbody>
+        </table>
+      `
+    })
+    .join("")}
 </div>
 </body>
 </html>`

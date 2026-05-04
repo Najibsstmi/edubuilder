@@ -81,7 +81,7 @@ textarea { resize: vertical; }
   font-size: 0.92rem;
 }
 
-..app-shell {
+.app-shell {
   min-height: 100vh;
   display: grid;
   grid-template-columns: 280px 1fr;
@@ -641,6 +641,27 @@ th, td { padding: 12px; border-bottom: 1px solid #e2e8f0; text-align: left; }
 
 .btn-light:hover {
   background: #f8fafc;
+}
+
+.btn-question {
+  background: #facc15;
+  color: #422006;
+  border: 1px solid #eab308;
+}
+
+.btn-question:hover {
+  background: #eab308;
+}
+
+.btn-scheme {
+  background: #22c55e;
+  color: #052e16;
+  border: 1px solid #16a34a;
+}
+
+.btn-scheme:hover {
+  background: #16a34a;
+  color: white;
 }
 
 .space-y-4 {
@@ -1300,6 +1321,41 @@ th, td { padding: 12px; border-bottom: 1px solid #e2e8f0; text-align: left; }
 
 .section-header {
   margin-bottom: 8px;
+}
+
+.scheme-list {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+.scheme-item h3 {
+  margin: 0 0 10px;
+  font-size: 1rem;
+}
+
+.scheme-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.scheme-table th,
+.scheme-table td {
+  border: 1px solid #111827;
+  padding: 8px 10px;
+  vertical-align: top;
+}
+
+.scheme-table th {
+  background: #f1f5f9;
+  font-weight: 700;
+  text-align: left;
+}
+
+.scheme-table td:last-child,
+.scheme-table th:last-child {
+  text-align: center;
+  width: 80px;
 }
 
 .section-instruction {
