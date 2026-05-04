@@ -33,12 +33,24 @@ type SavedItem = {
   tingkatan: number
   marks: number
   item_options?: ItemOption[]
+  item_subquestions?: ItemSubQuestion[]
 }
 
 type ItemOption = {
   option_label: string
   option_text: string | null
   option_image_url: string | null
+  display_order: number
+}
+
+type ItemSubQuestion = {
+  id: string
+  label: string
+  sub_label: string | null
+  question_text: string
+  answer_scheme_text: string
+  marks: number
+  response_type: string
   display_order: number
 }
 
@@ -104,6 +116,16 @@ export default function SavedSetsPage() {
               option_label,
               option_text,
               option_image_url,
+              display_order
+            ),
+            item_subquestions (
+              id,
+              label,
+              sub_label,
+              question_text,
+              answer_scheme_text,
+              marks,
+              response_type,
               display_order
             )
           )
@@ -329,7 +351,29 @@ function SetPaperPreview({ set, items }: { set: SavedSet; items: NormalizedSetIt
               )}
 
               {set.paper === "paper_2" && (
-                <div className="question-paper-marks">[{row.marks} markah]</div>
+                <div className="question-paper-subquestions">
+                  {sortSubQuestions(row.item?.item_subquestions).map((sub) => (
+                    <div key={sub.id} className="question-paper-subquestion">
+                      <div className="question-paper-subquestion-label">
+                        ({sub.label}){sub.sub_label ? `(${sub.sub_label})` : ""}
+                      </div>
+
+                      <div className="question-paper-subquestion-content">
+                        <div dangerouslySetInnerHTML={{ __html: sub.question_text || "" }} />
+
+                        {shouldShowAnswerSpace(row.item, sub) && (
+                          <AnswerSpace responseType={sub.response_type} />
+                        )}
+
+                        {!isInstructionSubQuestionPreview(sub) && (
+                          <div className="question-paper-subquestion-marks">
+                            [{sub.marks} markah]
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
               )}
             </li>
           ))}
@@ -360,6 +404,54 @@ function sortOptions(options: ItemOption[] = []) {
     if (a.display_order !== b.display_order) return a.display_order - b.display_order
     return a.option_label.localeCompare(b.option_label)
   })
+}
+
+function sortSubQuestions(subquestions: ItemSubQuestion[] = []) {
+  return [...subquestions].sort((a, b) => {
+    if (a.display_order !== b.display_order) return a.display_order - b.display_order
+    return a.label.localeCompare(b.label)
+  })
+}
+
+function isInstructionSubQuestionPreview(sub: ItemSubQuestion) {
+  return sub.response_type === "instruction" || sub.marks === 0
+}
+
+function shouldShowAnswerSpace(item: SavedItem | null, sub: ItemSubQuestion) {
+  if (!item) return false
+  if (isInstructionSubQuestionPreview(sub)) return false
+  return item.paper === "paper_2"
+}
+
+function AnswerSpace({ responseType }: { responseType: string }) {
+  if (responseType === "structured_text") {
+    return (
+      <div className="answer-space">
+        <div className="answer-line" />
+        <div className="answer-line" />
+      </div>
+    )
+  }
+
+  if (responseType === "table" || responseType === "calculation") {
+    return (
+      <div className="answer-space">
+        <div className="answer-line" />
+        <div className="answer-line" />
+        <div className="answer-line" />
+      </div>
+    )
+  }
+
+  if (responseType === "drawing" || responseType === "design") {
+    return <div className="answer-drawing-box" />
+  }
+
+  return (
+    <div className="answer-space">
+      <div className="answer-line" />
+    </div>
+  )
 }
 
 function buildWordHtml(set: SavedSet, items: NormalizedSetItem[]) {
