@@ -75,9 +75,28 @@ const defaultFilters: FilterState = {
   status: "",
 }
 
+type BankStats = {
+  total: number
+  paper1: number
+  paper2: number
+  draft: number
+  review: number
+  published: number
+}
+
+const emptyStats: BankStats = {
+  total: 0,
+  paper1: 0,
+  paper2: 0,
+  draft: 0,
+  review: 0,
+  published: 0,
+}
+
 export default function BankSoalanAdmin() {
   const { user } = useAuth()
   const [items, setItems] = useState<ItemRow[]>([])
+  const [stats, setStats] = useState<BankStats>(emptyStats)
   const [loading, setLoading] = useState(true)
   const [filters, setFilters] = useState<FilterState>(defaultFilters)
   const [filtersOpen, setFiltersOpen] = useState(false)
@@ -203,6 +222,7 @@ export default function BankSoalanAdmin() {
         setItems(rows)
       }
       setTotalCount(count || 0)
+      setStats(await fetchBankStats(filters))
     }
 
     setLoading(false)
@@ -347,16 +367,6 @@ export default function BankSoalanAdmin() {
       return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
     })
   }, [items, filters])
-
-  const stats = useMemo(() => {
-    const total = items.length
-    const paper1 = items.filter((i) => i.paper === "paper_1").length
-    const paper2 = items.filter((i) => i.paper === "paper_2").length
-    const draft = items.filter((i) => i.status === "draft").length
-    const review = items.filter((i) => i.status === "pending_review").length
-    const published = items.filter((i) => i.status === "published").length
-    return { total, paper1, paper2, draft, review, published }
-  }, [items])
 
   const constructOptions = useMemo(() => {
     return Array.from(
@@ -1029,6 +1039,62 @@ function getPaperPriority(paper: ItemRow["paper"], section: ItemRow["section"]) 
   if (section === "B") return 3
   if (section === "C") return 4
   return 5
+}
+
+async function fetchBankStats(filters: FilterState): Promise<BankStats> {
+  const [total, paper1, paper2, draft, review, published] = await Promise.all([
+    countItems(filters, {}),
+    countItems(filters, { paper: "paper_1" }),
+    countItems(filters, { paper: "paper_2" }),
+    countItems(filters, { status: "draft" }),
+    countItems(filters, { status: "pending_review" }),
+    countItems(filters, { status: "published" }),
+  ])
+
+  return { total, paper1, paper2, draft, review, published }
+}
+
+async function countItems(
+  filters: FilterState,
+  forced: Partial<Pick<FilterState, "paper" | "status">>,
+) {
+  let query = supabase.from("items").select("id", { count: "exact", head: true })
+
+  if (filters.tingkatan) {
+    query = query.eq("tingkatan", filters.tingkatan)
+  }
+
+  const paper = forced.paper ?? filters.paper
+  if (paper) {
+    query = query.eq("paper", paper)
+  }
+
+  if (filters.section) {
+    query = query.eq("section", filters.section)
+  }
+  if (filters.construct) {
+    query = query.ilike("main_construct", `%${filters.construct}%`)
+  }
+  if (filters.difficulty) {
+    query = query.eq("difficulty_level", filters.difficulty)
+  }
+
+  const status = forced.status ?? filters.status
+  if (status) {
+    query = query.eq("status", status)
+  }
+
+  if (filters.search) {
+    query = query.or(`item_code.ilike.%${filters.search}%,stem_text.ilike.%${filters.search}%`)
+  }
+
+  const { count, error } = await query
+  if (error) {
+    console.warn("Bank stats count skipped", error)
+    return 0
+  }
+
+  return count || 0
 }
 
 function getFilterSummary(filters: FilterState) {

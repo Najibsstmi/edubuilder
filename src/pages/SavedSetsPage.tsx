@@ -156,10 +156,6 @@ export default function SavedSetsPage() {
     setLoading(false)
   }
 
-  function printPdf() {
-    window.print()
-  }
-
   async function deleteSet(set: SavedSet) {
     const confirmed = window.confirm(`Padam set "${set.title}"? Set ini akan dibuang daripada Set Saya.`)
     if (!confirmed) return

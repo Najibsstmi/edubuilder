@@ -93,6 +93,10 @@ textarea { resize: vertical; }
   display: flex;
   flex-direction: column;
   gap: 18px;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
 }
 .brand {
   font-size: 1.4rem;
