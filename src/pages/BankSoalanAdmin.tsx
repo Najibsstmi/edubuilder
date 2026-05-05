@@ -789,6 +789,10 @@ export default function BankSoalanAdmin() {
                                 __html: subQuestion.question_text || "<p>-</p>",
                               }}
                             />
+                            <AnswerSpace
+                              responseType={subQuestion.response_type}
+                              marks={subQuestion.marks}
+                            />
                           </div>
                         ))}
                       </div>
@@ -889,6 +893,55 @@ function getSortedOptions(item: ItemRow) {
 function getSortedSubQuestions(item: ItemRow) {
   return [...(item.item_subquestions || [])].sort(
     (a, b) => a.display_order - b.display_order || a.label.localeCompare(b.label),
+  )
+}
+
+function AnswerSpace({
+  responseType,
+  marks = 1,
+}: {
+  responseType: string
+  marks?: number
+}) {
+  const lineCount = Math.max(1, marks || 1)
+
+  if (responseType === "instruction") return null
+
+  if (responseType === "structured_text") {
+    return <AnswerLines count={Math.max(2, lineCount)} />
+  }
+
+  if (responseType === "calculation") {
+    return <AnswerLines count={Math.max(5, lineCount)} />
+  }
+
+  if (responseType === "drawing") {
+    return <div className="answer-drawing-large" />
+  }
+
+  if (responseType === "design") {
+    return (
+      <div className="answer-design-space">
+        <div className="answer-drawing-large" />
+        <AnswerLines count={Math.max(3, Math.min(lineCount, 5))} />
+      </div>
+    )
+  }
+
+  if (responseType === "table") {
+    return <div className="answer-table-box" />
+  }
+
+  return <AnswerLines count={1} />
+}
+
+function AnswerLines({ count }: { count: number }) {
+  return (
+    <div className="answer-space">
+      {Array.from({ length: count }).map((_, index) => (
+        <div key={index} className="answer-line" />
+      ))}
+    </div>
   )
 }
 

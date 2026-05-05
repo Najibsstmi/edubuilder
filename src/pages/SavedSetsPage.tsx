@@ -495,7 +495,7 @@ function SetPaperPreview({ set, items }: { set: SavedSet; items: NormalizedSetIt
                         <div dangerouslySetInnerHTML={{ __html: sub.question_text || "" }} />
 
                         {shouldShowAnswerSpace(row.item, sub) && (
-                          <AnswerSpace responseType={sub.response_type} />
+                          <AnswerSpace responseType={sub.response_type} marks={sub.marks} />
                         )}
 
                         {!isInstructionSubQuestionPreview(sub) && (
@@ -668,39 +668,51 @@ function shouldShowAnswerSpace(item: SavedItem | null, sub: ItemSubQuestion) {
   return item.section === "A" || item.section === "B"
 }
 
-function AnswerSpace({ responseType }: { responseType: string }) {
+function AnswerSpace({
+  responseType,
+  marks = 1,
+}: {
+  responseType: string
+  marks?: number
+}) {
+  const lineCount = Math.max(1, marks || 1)
+
   if (responseType === "instruction") return null
 
-  if (responseType === "drawing" || responseType === "design") {
-    return null
+  if (responseType === "structured_text") {
+    return <AnswerLines count={Math.max(2, lineCount)} />
+  }
+
+  if (responseType === "calculation") {
+    return <AnswerLines count={Math.max(5, lineCount)} />
+  }
+
+  if (responseType === "drawing") {
+    return <div className="answer-drawing-large" />
+  }
+
+  if (responseType === "design") {
+    return (
+      <div className="answer-design-space">
+        <div className="answer-drawing-large" />
+        <AnswerLines count={Math.max(3, Math.min(lineCount, 5))} />
+      </div>
+    )
   }
 
   if (responseType === "table") {
     return <div className="answer-table-box" />
   }
 
-  if (responseType === "calculation") {
-    return (
-      <div className="answer-space">
-        <div className="answer-line" />
-        <div className="answer-line" />
-        <div className="answer-line" />
-      </div>
-    )
-  }
+  return <AnswerLines count={1} />
+}
 
-  if (responseType === "structured_text") {
-    return (
-      <div className="answer-space">
-        <div className="answer-line" />
-        <div className="answer-line" />
-      </div>
-    )
-  }
-
+function AnswerLines({ count }: { count: number }) {
   return (
     <div className="answer-space">
-      <div className="answer-line" />
+      {Array.from({ length: count }).map((_, index) => (
+        <div key={index} className="answer-line" />
+      ))}
     </div>
   )
 }

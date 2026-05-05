@@ -1293,6 +1293,20 @@ th, td { padding: 12px; border-bottom: 1px solid #e2e8f0; text-align: left; }
   min-height: 80px;
 }
 
+.answer-drawing-large {
+  border: 1px solid #111827;
+  min-height: 260px;
+  margin-top: 10px;
+}
+
+.answer-design-space {
+  margin-top: 10px;
+}
+
+.answer-design-space .answer-drawing-large {
+  margin-bottom: 10px;
+}
+
 .answer-line {
   border-bottom: 1px dotted #111827;
   height: 24px;
