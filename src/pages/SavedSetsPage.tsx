@@ -361,6 +361,62 @@ export default function SavedSetsPage() {
   )
 }
 
+function generatePaperInstruction(set: SavedSet, items: NormalizedSetItem[]) {
+  const sections = Array.from(
+    new Set(items.map((i) => i.item?.section).filter(Boolean)),
+  )
+
+  const hasA = sections.includes("A")
+  const hasB = sections.includes("B")
+  const hasC = sections.includes("C")
+
+  if (set.paper === "paper_1") {
+    return "Jawab semua soalan dalam kertas ini."
+  }
+
+  // Kertas 2
+  if (hasA && !hasB && !hasC) {
+    return "Jawab semua soalan dalam bahagian ini."
+  }
+
+  if (hasA && hasB && !hasC) {
+    return "Jawab semua soalan dalam Bahagian A dan Bahagian B."
+  }
+
+  if (hasA && hasB && hasC) {
+    // ambil nombor sebenar Bahagian C
+    const cItems = items.filter((i) => i.item?.section === "C")
+
+    const nums = cItems.map((i) => Number(i.custom_question_no)).sort((a, b) => a - b)
+
+    if (nums.length >= 3) {
+      return `Jawab semua soalan dalam Bahagian A dan Bahagian B. Jawab Soalan ${nums[0]} dan mana-mana satu soalan daripada Soalan ${nums[1]} atau ${nums[2]}.`
+    }
+
+    return "Jawab semua soalan dalam Bahagian A dan Bahagian B serta soalan dalam Bahagian C."
+  }
+
+  return "Jawab semua soalan."
+}
+
+function generateSectionCInstruction(items: NormalizedSetItem[]) {
+  const cItems = items.filter((i) => i.item?.section === "C")
+
+  const nums = cItems.map((i) => Number(i.custom_question_no)).sort((a, b) => a - b)
+
+  if (nums.length >= 3) {
+    return `Jawab Soalan ${nums[0]} dan mana-mana satu soalan daripada Soalan ${nums[1]} atau ${nums[2]}.`
+  }
+
+  return "Jawab soalan dalam bahagian ini."
+}
+
+function getSectionTotalMarks(items: NormalizedSetItem[], section: string) {
+  return items
+    .filter((row) => row.item?.section === section)
+    .reduce((total, row) => total + (row.marks || 0), 0)
+}
+
 function SetPaperPreview({ set, items }: { set: SavedSet; items: NormalizedSetItem[] }) {
   return (
     <section className="card-block set-print-area">
@@ -371,13 +427,37 @@ function SetPaperPreview({ set, items }: { set: SavedSet; items: NormalizedSetIt
           <span>{set.tingkatan ? `Tingkatan ${set.tingkatan}` : "Tingkatan 4 dan 5"}</span>
         </div>
 
+        <div className="paper-instruction">
+          {generatePaperInstruction(set, items)}
+        </div>
+
         <ol className="question-paper-list">
-          {items.map((row, index) => (
-            <li key={row.id} className="question-paper-item">
-              <div
-                className="question-paper-stem"
-                dangerouslySetInnerHTML={{ __html: row.item?.stem_text || "" }}
-              />
+          {items.map((row, index) => {
+            const currentSection = row.item?.section
+            const prevSection = index > 0 ? items[index - 1].item?.section : null
+            const isNewSection = currentSection !== prevSection
+
+            return (
+              <>
+                {isNewSection && currentSection && (
+                  <div className="section-block">
+                    <div className="section-title">Bahagian {currentSection}</div>
+                    <div className="section-marks">
+                      [{getSectionTotalMarks(items, currentSection)} markah]
+                    </div>
+                    <div className="section-instruction">
+                      {currentSection === "C"
+                        ? generateSectionCInstruction(items)
+                        : "Jawab semua soalan dalam bahagian ini."}
+                    </div>
+                  </div>
+                )}
+
+                <li key={row.id} className="question-paper-item">
+                  <div
+                    className="question-paper-stem"
+                    dangerouslySetInnerHTML={{ __html: row.item?.stem_text || "" }}
+                  />
 
               {set.paper === "paper_1" && (
                 <div className="question-paper-options">
@@ -435,7 +515,9 @@ function SetPaperPreview({ set, items }: { set: SavedSet; items: NormalizedSetIt
                 </div>
               )}
             </li>
-          ))}
+              </>
+            )
+          })}
         </ol>
 
         {items.length === 0 && <div className="empty-state">Set ini belum ada item.</div>}
