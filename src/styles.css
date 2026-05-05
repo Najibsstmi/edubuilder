@@ -1349,6 +1349,13 @@ th, td { padding: 12px; border-bottom: 1px solid #e2e8f0; text-align: left; }
   font-size: 1rem;
 }
 
+.pagination-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 16px;
+}
+
 .scheme-table {
   width: 100%;
   border-collapse: collapse;

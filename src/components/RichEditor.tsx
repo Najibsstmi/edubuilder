@@ -153,19 +153,51 @@ export default function RichEditor({
     return "png"
   }
 
+  async function compressImage(file: File) {
+    if (!file.type.startsWith("image/")) return file
+    if (file.type === "image/gif") return file
+
+    const imageBitmap = await createImageBitmap(file)
+    const maxWidth = 1200
+    const scale = Math.min(1, maxWidth / imageBitmap.width)
+
+    const canvas = document.createElement("canvas")
+    canvas.width = Math.round(imageBitmap.width * scale)
+    canvas.height = Math.round(imageBitmap.height * scale)
+
+    const ctx = canvas.getContext("2d")
+    if (!ctx) return file
+
+    ctx.drawImage(imageBitmap, 0, 0, canvas.width, canvas.height)
+
+    const blob = await new Promise<Blob | null>((resolve) => {
+      canvas.toBlob((result) => resolve(result), "image/webp", 0.78)
+    })
+
+    imageBitmap.close()
+
+    if (!blob) return file
+
+    return new File([blob], file.name.replace(/\.[^.]+$/, ".webp"), {
+      type: "image/webp",
+    })
+  }
+
   async function handleImageUpload(file: File, altText = file.name || "pasted-image") {
     if (!editor) return
     setUploading(true)
 
     try {
-      const ext = getImageExtension(file)
+      const uploadFile = await compressImage(file)
+      const ext = getImageExtension(uploadFile)
       const fileName = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
       const filePath = `editor-images/${fileName}`
 
       const { error: uploadError } = await supabase.storage
         .from("item-media")
-        .upload(filePath, file, {
+        .upload(filePath, uploadFile, {
           cacheControl: "3600",
+          contentType: uploadFile.type,
           upsert: false,
         })
 

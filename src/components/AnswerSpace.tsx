@@ -9,6 +9,8 @@ export function AnswerSpace({
 
   if (responseType === "instruction") return null
 
+  if (responseType === "provided_space") return null
+
   if (responseType === "structured_text") {
     return <AnswerLines count={Math.max(2, lineCount)} />
   }

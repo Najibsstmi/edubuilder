@@ -52,6 +52,23 @@ export default function BulkImportPage() {
   const [message, setMessage] = useState("")
   const detectedQuestionCount = countDetectedQuestions(rawText)
 
+  const isMasterAdmin = profile?.role === "master_admin"
+
+  if (!isMasterAdmin) {
+    return (
+      <div className="page-shell">
+        <section className="card-block">
+          <div className="card-head">
+            <h2>Akses Terhad</h2>
+            <p>
+              Modul Import Pukal AI hanya dibuka kepada Master Admin sahaja.
+            </p>
+          </div>
+        </section>
+      </div>
+    )
+  }
+
   async function handleFileUpload(file: File | null) {
     if (!file) return
 

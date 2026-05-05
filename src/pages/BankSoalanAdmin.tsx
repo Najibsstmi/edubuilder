@@ -86,17 +86,29 @@ export default function BankSoalanAdmin() {
   const [updatingStatusId, setUpdatingStatusId] = useState<string | null>(null)
   const [message, setMessage] = useState("")
 
+  const PAGE_SIZE = 10
+  const [page, setPage] = useState(1)
+  const [totalCount, setTotalCount] = useState(0)
+
   useEffect(() => {
     fetchItems()
-  }, [])
+  }, [page, filters])
+
+  useEffect(() => {
+    setPage(1)
+  }, [filters])
 
   async function fetchItems() {
     setLoading(true)
     setMessage("")
 
-    const { data, error } = await supabase
+    const from = (page - 1) * PAGE_SIZE
+    const to = from + PAGE_SIZE - 1
+
+    let query = supabase
       .from("items")
-      .select(`
+      .select(
+        `
         id,
         item_code,
         tingkatan,
@@ -126,8 +138,36 @@ export default function BankSoalanAdmin() {
           is_correct,
           display_order
         )
-      `)
+      `,
+        { count: "exact" }
+      )
       .order("created_at", { ascending: false })
+      .range(from, to)
+
+    // Apply filters if any
+    if (filters.tingkatan) {
+      query = query.eq("tingkatan", filters.tingkatan)
+    }
+    if (filters.paper) {
+      query = query.eq("paper", filters.paper)
+    }
+    if (filters.section) {
+      query = query.eq("section", filters.section)
+    }
+    if (filters.construct) {
+      query = query.ilike("main_construct", `%${filters.construct}%`)
+    }
+    if (filters.difficulty) {
+      query = query.eq("difficulty_level", filters.difficulty)
+    }
+    if (filters.status) {
+      query = query.eq("status", filters.status)
+    }
+    if (filters.search) {
+      query = query.or(`item_code.ilike.%${filters.search}%,stem_text.ilike.%${filters.search}%`)
+    }
+
+    const { data, error, count } = await query
 
     if (error) {
       console.error(error)
@@ -162,6 +202,7 @@ export default function BankSoalanAdmin() {
       } else {
         setItems(rows)
       }
+      setTotalCount(count || 0)
     }
 
     setLoading(false)
@@ -498,8 +539,9 @@ export default function BankSoalanAdmin() {
               </div>
             </section>
           ) : (
-            <div className="bank-card-list">
-              {filteredItems.map((item) => (
+            <>
+              <div className="bank-card-list">
+                {filteredItems.map((item) => (
                 <article
                   key={item.id}
                   className={`bank-item-card ${
@@ -632,6 +674,29 @@ export default function BankSoalanAdmin() {
                 </article>
               ))}
             </div>
+
+            <div className="pagination-bar">
+              <button
+                className="btn btn-light"
+                disabled={page === 1}
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+              >
+                ← Sebelumnya
+              </button>
+
+              <span>
+                Page {page} / {Math.ceil(totalCount / PAGE_SIZE) || 1}
+              </span>
+
+              <button
+                className="btn btn-light"
+                disabled={page >= Math.ceil(totalCount / PAGE_SIZE)}
+                onClick={() => setPage((p) => p + 1)}
+              >
+                Seterusnya →
+              </button>
+            </div>
+          </>
           )}
         </section>
 

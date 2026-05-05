@@ -19,6 +19,7 @@ type SubQuestionResponseType =
   | "drawing"
   | "design"
   | "calculation"
+  | "provided_space"
 
 type McqOption = {
   label: "A" | "B" | "C" | "D"
@@ -229,6 +230,7 @@ export default function ItemFormPage() {
   const [metadataSuggestion, setMetadataSuggestion] = useState("")
   const [suggestingMetadata, setSuggestingMetadata] = useState(false)
   const [generatingSchemeId, setGeneratingSchemeId] = useState<string | null>(null)
+  const [generatingScheme, setGeneratingScheme] = useState(false)
   const [subQuestions, setSubQuestions] = useState<SubQuestion[]>(() => createInitialSubQuestions())
 
   const isPaper1 = paper === "paper_1"
@@ -698,10 +700,20 @@ export default function ItemFormPage() {
   }
 
   async function generateAllAnswerSchemes() {
-    for (const item of markedSubQuestions) {
-      if (!item.answerSchemeText.trim()) {
-        await generateAnswerSchemeForSubQuestion(item)
+    if (generatingScheme) return
+
+    setGeneratingScheme(true)
+
+    try {
+      for (const item of markedSubQuestions) {
+        if (!item.answerSchemeText.trim()) {
+          await generateAnswerSchemeForSubQuestion(item)
+        }
       }
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setGeneratingScheme(false)
     }
   }
 
@@ -1712,6 +1724,7 @@ export default function ItemFormPage() {
                                 <option value="drawing">Lakaran</option>
                                 <option value="design">Rekacipta</option>
                                 <option value="calculation">Pengiraan</option>
+                                <option value="provided_space">Ruang jawapan telah disediakan</option>
                               </select>
                             </Field>
 
@@ -1804,11 +1817,11 @@ export default function ItemFormPage() {
                         <div className="marking-header-actions">
                           <button
                             type="button"
-                            className="btn btn-light btn-sm"
+                            className="btn btn-primary"
                             onClick={() => void generateAllAnswerSchemes()}
-                            disabled={Boolean(generatingSchemeId) || markedSubQuestions.length === 0}
+                            disabled={generatingScheme || Boolean(generatingSchemeId) || markedSubQuestions.length === 0}
                           >
-                            Jana Semua Skema
+                            {generatingScheme ? "Menjana skema..." : "Jana Semua Skema"}
                           </button>
                           <div className="subquestion-total">
                             Jumlah: <strong>{totalSubQuestionMarks}</strong> markah
