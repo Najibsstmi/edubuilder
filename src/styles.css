@@ -1308,8 +1308,9 @@ th, td { padding: 12px; border-bottom: 1px solid #e2e8f0; text-align: left; }
 }
 
 .answer-line {
-  border-bottom: 1px dotted #111827;
-  height: 24px;
+  border-bottom: 1px solid #111;
+  margin: 6px 0;
+  height: 18px;
   width: 100%;
 }
 

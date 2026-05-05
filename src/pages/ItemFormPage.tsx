@@ -2,6 +2,7 @@ import { FormEvent, Suspense, lazy, useEffect, useMemo, useState } from "react"
 import { useSearchParams } from "react-router-dom"
 import { supabase } from "../lib/supabase"
 import { useUser } from "../context/UserContext"
+import { AnswerSpace } from "../components/AnswerSpace"
 
 const RichEditor = lazy(() => import("../components/RichEditor"))
 
@@ -2163,7 +2164,7 @@ export default function ItemFormPage() {
                 {!isPaper1 && (
                   <div className="mini-subquestions">
                     {subQuestions.map((item) => (
-                      <div key={item.id} className="mini-subquestion">
+                      <div key={item.id} className="preview-subquestion">
                         <div className="mini-option-head">
                           <strong>{formatSubQuestionLabel(item)}</strong>
                           <span>
@@ -2176,10 +2177,13 @@ export default function ItemFormPage() {
                           </div>
                         )}
                         <div
-                          className="mini-option-body"
                           dangerouslySetInnerHTML={{
                             __html: item.questionText || "<p>Sub-soalan akan dipaparkan di sini.</p>",
                           }}
+                        />
+                        <AnswerSpace
+                          responseType={item.responseType}
+                          marks={item.marks}
                         />
                       </div>
                     ))}
