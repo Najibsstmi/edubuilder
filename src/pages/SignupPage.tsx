@@ -18,7 +18,7 @@ function getSignupErrorMessage(message = '') {
   }
 
   if (normalized.includes('rate limit')) {
-    return 'Terlalu banyak percubaan daftar. Sila cuba semula sebentar lagi.';
+    return 'Sistem daftar sedang menerima terlalu banyak permintaan serentak. Sila tunggu 2-5 minit dan cuba semula.';
   }
 
   return message || 'Signup gagal. Sila semak maklumat dan cuba semula.';

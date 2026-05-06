@@ -127,7 +127,7 @@ export function MasterAdminUsersPage() {
                           {roleLabel(user.role)}
                         </Badge>
                         <Badge tone={user.account_type === "full" ? "green" : "orange"}>
-                          {user.account_type === "full" ? "premium/full" : "free"}
+                          {accountLabel(user)}
                         </Badge>
                       </div>
                     </td>
@@ -195,22 +195,31 @@ export function MasterAdminUsersPage() {
                           <button
                             type="button"
                             className="btn btn-light btn-sm"
-                            onClick={() => updateUser(user.id, { role: user.role === "admin" ? "user" : "admin" })}
+                            onClick={() =>
+                              updateUser(
+                                user.id,
+                                user.role === "admin"
+                                  ? { role: "user", account_type: "free" }
+                                  : { role: "admin", account_type: "full", status: "active" },
+                              )
+                            }
                           >
                             {user.role === "admin" ? "Jadi User" : "Jadi Admin"}
                           </button>
 
-                          <button
-                            type="button"
-                            className="btn btn-light btn-sm"
-                            onClick={() =>
-                              updateUser(user.id, {
-                                account_type: user.account_type === "full" ? "free" : "full",
-                              })
-                            }
-                          >
-                            {user.account_type === "full" ? "Set Free" : "Set Premium"}
-                          </button>
+                          {user.role === "user" && (
+                            <button
+                              type="button"
+                              className="btn btn-light btn-sm"
+                              onClick={() =>
+                                updateUser(user.id, {
+                                  account_type: user.account_type === "full" ? "free" : "full",
+                                })
+                              }
+                            >
+                              {user.account_type === "full" ? "Set Free" : "Set Premium"}
+                            </button>
+                          )}
                         </div>
                       )}
                     </td>
@@ -242,6 +251,12 @@ function roleLabel(role: Profile["role"]) {
   if (role === "master_admin") return "Master Admin"
   if (role === "admin") return "Admin/Penggubal"
   return "User"
+}
+
+function accountLabel(user: Profile) {
+  if (user.role === "admin") return "full access"
+  if (user.account_type === "full") return "premium/full"
+  return "free"
 }
 
 function emptyUserMetrics(): UserMetrics {

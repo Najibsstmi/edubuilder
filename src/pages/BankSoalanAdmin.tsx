@@ -624,28 +624,6 @@ export default function BankSoalanAdmin() {
                       Edit
                     </Link>
 
-                    {item.status === "draft" && (
-                      <button
-                        type="button"
-                        className="btn btn-light btn-sm"
-                        onClick={() => updateItemStatus(item, "pending_review")}
-                        disabled={updatingStatusId === item.id}
-                      >
-                        Hantar Semakan
-                      </button>
-                    )}
-
-                    {item.status !== "approved" && item.status !== "published" && item.status !== "archived" && canReviewItem(item, profile?.id, profile?.role) && (
-                      <button
-                        type="button"
-                        className="btn btn-light btn-sm"
-                        onClick={() => updateItemStatus(item, "approved")}
-                        disabled={updatingStatusId === item.id}
-                      >
-                        Approve
-                      </button>
-                    )}
-
                     {item.status !== "published" && item.status !== "archived" && canReviewItem(item, profile?.id, profile?.role) && (
                       <button
                         type="button"
