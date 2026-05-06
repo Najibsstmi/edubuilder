@@ -2,10 +2,13 @@ import { FormEvent, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { BrandLogo } from '../components/BrandLogo';
+import { useAuth } from '../contexts/AuthContext';
+import { PremiumContactCard } from '../components/PremiumContactCard';
 
 export function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
+  const { signInAsGuest } = useAuth();
   const from = (location.state as { from?: { pathname?: string } })?.from?.pathname || '/';
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -28,6 +31,14 @@ export function LoginPage() {
     navigate(from, { replace: true });
   };
 
+  const enterAsGuest = async () => {
+    setLoading(true);
+    setError('');
+    await signInAsGuest();
+    setLoading(false);
+    navigate('/', { replace: true });
+  };
+
   return (
     <div className="auth-page">
       <form className="card auth-card" onSubmit={onSubmit}>
@@ -45,8 +56,16 @@ export function LoginPage() {
           <Link to="/forgot-password">Lupa kata laluan?</Link>
         </p>
         {error && <p className="error-text">{error}</p>}
-        <button className="primary-btn" disabled={loading}>{loading ? 'Sedang login...' : 'Login'}</button>
-        <p className="muted">Belum ada akaun? <Link to="/signup">Daftar di sini</Link></p>
+        <div className="auth-actions">
+          <button className="primary-btn" disabled={loading}>{loading ? 'Sedang login...' : 'Login'}</button>
+          <button type="button" className="ghost-btn" onClick={enterAsGuest}>
+            Masuk sebagai tetamu
+          </button>
+        </div>
+        <p className="muted signup-cta-text">
+          Belum ada akaun? <Link to="/signup">Daftar di sini</Link>
+        </p>
+        <PremiumContactCard compact />
       </form>
     </div>
   );

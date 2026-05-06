@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { BrandLogo } from '../components/BrandLogo';
+import { PremiumContactCard } from '../components/PremiumContactCard';
 import type { School } from '../types';
 
 function getSignupErrorMessage(message = '') {
@@ -153,6 +154,7 @@ export function SignupPage() {
         {error && <p className="error-text">{error}</p>}
         <button className="primary-btn" disabled={loading}>{loading ? 'Sedang daftar...' : 'Daftar Akaun'}</button>
         <p className="muted">Dah ada akaun? <Link to="/login">Login</Link></p>
+        <PremiumContactCard compact />
       </form>
     </div>
   );

@@ -65,6 +65,8 @@ type NormalizedSetItem = {
   item: SavedItem | null
 }
 
+const GUEST_SET_KEY = "edubuilder_guest_sets"
+
 export default function SavedSetsPage() {
   const { profile } = useAuth()
   const [sets, setSets] = useState<SavedSet[]>([])
@@ -91,6 +93,17 @@ export default function SavedSetsPage() {
 
     setLoading(true)
     setMessage("")
+
+    if (profile.id === "guest-local") {
+      const nextSets = getGuestSavedSets()
+      setSets(nextSets)
+      setSelectedSetId((current) => {
+        if (current && nextSets.some((set) => set.id === current)) return current
+        return nextSets[0]?.id || ""
+      })
+      setLoading(false)
+      return
+    }
 
     const { data, error } = await supabase
       .from("build_sets")
@@ -164,6 +177,18 @@ export default function SavedSetsPage() {
     setMessage("")
 
     try {
+      if (profile?.id === "guest-local") {
+        const nextSets = getGuestSavedSets().filter((row) => row.id !== set.id)
+        localStorage.setItem(GUEST_SET_KEY, JSON.stringify(nextSets))
+        setSets(nextSets)
+        setSelectedSetId((current) => {
+          if (current !== set.id) return current
+          return nextSets[0]?.id || ""
+        })
+        setMessage("Set berjaya dipadam.")
+        return
+      }
+
       const { error: itemError } = await supabase
         .from("build_set_items")
         .delete()
@@ -1085,6 +1110,14 @@ function getSavedSetLimit(profile: { role?: string; account_type?: string } | nu
   if (profile.role === "admin") return 20
   if (profile.account_type === "full") return 15
   return 1
+}
+
+function getGuestSavedSets() {
+  try {
+    return JSON.parse(localStorage.getItem(GUEST_SET_KEY) || "[]") as SavedSet[]
+  } catch {
+    return []
+  }
 }
 
 function normalizeWordOptionHtml(html: string) {

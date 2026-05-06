@@ -8,11 +8,28 @@ interface AuthContextValue {
   session: Session | null;
   profile: Profile | null;
   loading: boolean;
+  signInAsGuest: () => Promise<void>;
   refreshProfile: () => Promise<void>;
   signOut: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
+const GUEST_SESSION_KEY = 'edubuilder_guest_session';
+
+function createGuestProfile(): Profile {
+  return {
+    id: 'guest-local',
+    full_name: 'Tetamu EduBuilder',
+    email: null,
+    role: 'user',
+    account_type: 'free',
+    status: 'active',
+    school_id: null,
+    state_name: null,
+    ppd_name: null,
+    school_type: null,
+  };
+}
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -24,6 +41,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const { data } = await supabase.auth.getUser();
     const currentUser = data.user;
     setUser(currentUser ?? null);
+
+    if (localStorage.getItem(GUEST_SESSION_KEY) === 'true') {
+      setProfile(createGuestProfile());
+      return;
+    }
 
     if (!currentUser) {
       setProfile(null);
@@ -53,7 +75,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (!mounted) return;
       setSession(data.session ?? null);
       setUser(data.session?.user ?? null);
-      await refreshProfile();
+      if (!data.session && localStorage.getItem(GUEST_SESSION_KEY) === 'true') {
+        setProfile(createGuestProfile());
+      } else {
+        await refreshProfile();
+      }
       if (mounted) setLoading(false);
     };
 
@@ -72,12 +98,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signOut = async () => {
+    localStorage.removeItem(GUEST_SESSION_KEY);
     await supabase.auth.signOut();
     setProfile(null);
   };
 
+  const signInAsGuest = async () => {
+    localStorage.setItem(GUEST_SESSION_KEY, 'true');
+
+    const { data, error } = await supabase.auth.signInAnonymously();
+    if (error) {
+      console.warn('Anonymous guest sign-in failed, falling back to local guest session', error);
+      setSession(null);
+      setUser(null);
+    } else {
+      setSession(data.session ?? null);
+      setUser(data.user ?? null);
+    }
+
+    setProfile(createGuestProfile());
+  };
+
   const value = useMemo(
-    () => ({ user, session, profile, loading, refreshProfile, signOut }),
+    () => ({ user, session, profile, loading, signInAsGuest, refreshProfile, signOut }),
     [user, session, profile, loading],
   );
 

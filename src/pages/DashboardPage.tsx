@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react"
 import { Link } from "react-router-dom"
 import { BrandLogo } from "../components/BrandLogo"
+import { PremiumContactCard } from "../components/PremiumContactCard"
 import { useAuth } from "../contexts/AuthContext"
 import { supabase } from "../lib/supabase"
 
@@ -41,6 +42,7 @@ export function DashboardPage() {
   const isMaster = profile?.role === "master_admin"
   const isAdmin = profile?.role === "admin"
   const isPremiumUser = profile?.role === "user" && profile?.account_type === "full"
+  const isFreeUser = profile?.role === "user" && profile?.account_type === "free"
   const setLimit = useMemo(() => {
     if (!profile) return 1
     if (profile.role === "master_admin") return "Tiada had"
@@ -94,6 +96,8 @@ export function DashboardPage() {
           <BrandLogo compact />
         </div>
       </div>
+
+      {isFreeUser && <PremiumContactCard />}
 
       <div className="stats-grid stats-grid-compact">
         <DashboardStat title="Peranan" value={profile?.role || "-"} />

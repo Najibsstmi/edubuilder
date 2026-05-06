@@ -69,6 +69,14 @@ const defaultDistribution: Distribution = {
   sederhana: 0,
   tinggi: 0,
 }
+const FREE_BUILD_LIMITS = {
+  paper1: 10,
+  paper2A: 2,
+  paper2B: 2,
+  paper2C: 1,
+  paper2Total: 5,
+}
+const GUEST_SET_KEY = "edubuilder_guest_sets"
 
 export default function BuilderSetSoalan() {
   const { profile } = useUser()
@@ -178,6 +186,11 @@ export default function BuilderSetSoalan() {
       bidang: selectedTopicKeys.length || bidangOptions.length,
     }
   }, [bidangOptions.length, customPool, selectedTopicKeys.length])
+
+  const currentBuildLimit = useMemo(
+    () => getBuildQuestionLimit(profile, paper, section),
+    [paper, profile, section],
+  )
 
   async function fetchItems() {
     setLoadingItems(true)
@@ -378,6 +391,11 @@ export default function BuilderSetSoalan() {
       return
     }
 
+    if (totalSoalan > currentBuildLimit) {
+      setMessage(getBuildLimitMessage(currentBuildLimit, paper, section))
+      return
+    }
+
     if (topicSelectionMode === "manual" && difficultyMode === "distribution") {
       setMessage("Taburan Bab belum boleh digabungkan dengan Tetapkan taburan aras. Pilih Bebas/random atau aras tertentu dahulu.")
       return
@@ -397,11 +415,17 @@ export default function BuilderSetSoalan() {
 
     if (!result) return
 
-    setGeneratedSet(result.slice(0, totalSoalan))
+    const finalSet = result.slice(0, totalSoalan)
+    setGeneratedSet(paper === "paper_1" ? sortPaper1ItemsByBidang(finalSet) : finalSet)
     setMessage(`Set latihan Kertas 1 dijana: ${Math.min(result.length, totalSoalan)} soalan.`)
   }
 
   function buildSPM() {
+    if (!hasUnlimitedBuildAccess(profile)) {
+      setMessage("Format SPM penuh hanya untuk akaun premium, admin atau master admin. Akaun free boleh jana latihan custom mengikut had.")
+      return
+    }
+
     if (paper === "paper_1") {
       const pool = baseAvailableItems.filter((item) => item.item_type === "mcq")
       const rendah = shuffle(pool.filter((item) => item.difficulty_level === "rendah")).slice(0, 20)
@@ -511,6 +535,41 @@ export default function BuilderSetSoalan() {
 
     if (generatedSet.length === 0) {
       setMessage("Jana set dahulu sebelum simpan.")
+      return
+    }
+
+    if (profile.id === "guest-local") {
+      const saved = getGuestSavedSets()
+      const setLimit = getSavedSetLimit(profile)
+      if (saved.length >= setLimit) {
+        setMessage("Had tetamu ialah 1 set sahaja. Padam set lama di Set Saya sebelum simpan set baharu.")
+        return
+      }
+
+      const now = new Date().toISOString()
+      const guestSet = {
+        id: `guest-set-${Date.now()}`,
+        title: setTitle.trim(),
+        build_mode: resolveBuildMode(),
+        tingkatan: tingkatan === "both" ? null : Number(tingkatan),
+        paper,
+        section: paper === "paper_2" && section ? section : null,
+        status: "draft",
+        created_at: now,
+        build_set_items: generatedSet.map((item, index) => ({
+          id: `guest-set-item-${item.id}-${index}`,
+          section: item.section,
+          display_order: index + 1,
+          custom_question_no: String(index + 1),
+          marks: item.marks || 1,
+          items: item,
+        })),
+      }
+
+      localStorage.setItem(GUEST_SET_KEY, JSON.stringify([...saved, guestSet]))
+      setMessage("Set tetamu berjaya disimpan dalam browser ini.")
+      setGeneratedSet([])
+      setSetTitle("")
       return
     }
 
@@ -668,9 +727,16 @@ export default function BuilderSetSoalan() {
                       className="input"
                       type="number"
                       min={1}
+                      max={Number.isFinite(currentBuildLimit) ? currentBuildLimit : undefined}
                       value={totalSoalan}
                       onChange={(event) => setTotalSoalan(Number(event.target.value))}
                     />
+                    {Number.isFinite(currentBuildLimit) && (
+                      <small className="field-hint">
+                        Had free: maksimum {currentBuildLimit} soalan
+                        {paper === "paper_2" && section ? ` untuk Bahagian ${section}` : ""}.
+                      </small>
+                    )}
                   </Field>
 
                   <Field label="Aras Kesukaran">
@@ -1078,6 +1144,10 @@ export default function BuilderSetSoalan() {
             </div>
             <div className="preview-stack">
               <PreviewRow label="Item tersedia" value={loadingItems ? "Memuat..." : String(customStats.total)} />
+              <PreviewRow
+                label="Had akaun"
+                value={Number.isFinite(currentBuildLimit) ? `${currentBuildLimit} soalan` : "Tiada had"}
+              />
               <PreviewRow label="Bidang dipilih" value={String(customStats.bidang)} />
               <PreviewRow label="Rendah" value={String(customStats.rendah)} />
               <PreviewRow label="Sederhana" value={String(customStats.sederhana)} />
@@ -1200,6 +1270,20 @@ function getBidangKey(item: Pick<Item, "tingkatan" | "bidang_learning_code">) {
   return `T${item.tingkatan}:${item.bidang_learning_code || "unknown"}`
 }
 
+function sortPaper1ItemsByBidang(items: Item[]) {
+  return [...items].sort((a, b) => {
+    if (a.tingkatan !== b.tingkatan) return a.tingkatan - b.tingkatan
+
+    const codeCompare = naturalCodeSort(
+      a.bidang_learning_code || "999",
+      b.bidang_learning_code || "999",
+    )
+    if (codeCompare !== 0) return codeCompare
+
+    return (a.bidang_learning_name || "").localeCompare(b.bidang_learning_name || "")
+  })
+}
+
 function getTopicTargetTotal(topicTargets: Record<string, number>) {
   return Object.values(topicTargets).reduce((sum, value) => sum + Math.max(0, Number(value) || 0), 0)
 }
@@ -1210,6 +1294,46 @@ function getSavedSetLimit(profile: { role?: string; account_type?: string } | nu
   if (profile.role === "admin") return 20
   if (profile.account_type === "full") return 15
   return 1
+}
+
+function hasUnlimitedBuildAccess(profile: { role?: string; account_type?: string } | null) {
+  return (
+    profile?.role === "master_admin" ||
+    profile?.role === "admin" ||
+    profile?.account_type === "full"
+  )
+}
+
+function getBuildQuestionLimit(
+  profile: { role?: string; account_type?: string } | null,
+  paper: PaperType,
+  section: SectionType,
+) {
+  if (hasUnlimitedBuildAccess(profile)) return Infinity
+  if (paper === "paper_1") return FREE_BUILD_LIMITS.paper1
+  if (section === "A") return FREE_BUILD_LIMITS.paper2A
+  if (section === "B") return FREE_BUILD_LIMITS.paper2B
+  if (section === "C") return FREE_BUILD_LIMITS.paper2C
+  return FREE_BUILD_LIMITS.paper2Total
+}
+
+function getBuildLimitMessage(limit: number, paper: PaperType, section: SectionType) {
+  const scope =
+    paper === "paper_1"
+      ? "Kertas 1"
+      : section
+      ? `Kertas 2 Bahagian ${section}`
+      : "Kertas 2"
+
+  return `Had akaun free untuk ${scope} ialah ${limit} soalan sahaja.`
+}
+
+function getGuestSavedSets() {
+  try {
+    return JSON.parse(localStorage.getItem(GUEST_SET_KEY) || "[]") as any[]
+  } catch {
+    return []
+  }
 }
 
 function naturalCodeSort(a: string, b: string) {
