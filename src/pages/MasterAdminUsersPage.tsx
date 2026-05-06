@@ -1,228 +1,300 @@
-import { useEffect, useState } from 'react';
-import { supabase } from '../lib/supabase';
-import type { Profile } from '../types';
-import { useAuth as useUser } from '../contexts/AuthContext';
+import { useEffect, useMemo, useState } from "react"
+import { supabase } from "../lib/supabase"
+import type { Profile } from "../types"
+import { useAuth } from "../contexts/AuthContext"
+
+type UserMetrics = {
+  total: number
+  paper1: number
+  paper2: number
+  pending: number
+  published: number
+  aiUsed: number
+}
+
+const ADMIN_AI_LIMIT = 30
 
 export function MasterAdminUsersPage() {
-  const { profile } = useUser();
-  const [users, setUsers] = useState<Profile[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const { profile } = useAuth()
+  const [users, setUsers] = useState<Profile[]>([])
+  const [metrics, setMetrics] = useState<Record<string, UserMetrics>>({})
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState("")
 
-  const loadUsers = async () => {
-    setLoading(true);
-    const { data, error: loadError } = await supabase
-      .from('profiles')
-      .select('*')
-      .order('created_at', { ascending: false });
-
-    setLoading(false);
-
-    if (loadError) {
-      setError(loadError.message);
-      return;
-    }
-
-    setUsers((data || []) as Profile[]);
-  };
+  const summary = useMemo(() => {
+    const admins = users.filter((user) => user.role === "admin").length
+    const premium = users.filter((user) => user.role === "user" && user.account_type === "full").length
+    const free = users.filter((user) => user.role === "user" && user.account_type === "free").length
+    const pending = users.filter((user) => user.status === "pending").length
+    return { admins, premium, free, pending }
+  }, [users])
 
   useEffect(() => {
-    void loadUsers();
-  }, []);
+    void loadUsers()
+  }, [])
 
-  async function updateUser(id: string, updates: Record<string, any>) {
-    const { error } = await supabase
-      .from('profiles')
-      .update(updates)
-      .eq('id', id);
+  async function loadUsers() {
+    setLoading(true)
+    setError("")
 
-    if (error) {
-      console.error(error);
-      alert('Gagal kemas kini pengguna');
-      return;
+    const { data, error: loadError } = await supabase
+      .from("profiles")
+      .select("*")
+      .order("created_at", { ascending: false })
+
+    if (loadError) {
+      setError(loadError.message)
+      setLoading(false)
+      return
     }
 
-    await loadUsers();
+    const nextUsers = (data || []) as Profile[]
+    setUsers(nextUsers)
+    setMetrics(await loadUserMetrics(nextUsers))
+    setLoading(false)
   }
 
-  async function activateUser(userId: string, masterId: string) {
-    await updateUser(userId, {
-      status: 'active',
-      approved_by: masterId,
-      approved_at: new Date().toISOString(),
-    });
+  async function updateUser(id: string, updates: Record<string, any>) {
+    const { error: updateError } = await supabase.from("profiles").update(updates).eq("id", id)
+
+    if (updateError) {
+      console.error(updateError)
+      alert("Gagal kemas kini pengguna")
+      return
+    }
+
+    await loadUsers()
   }
 
-  async function suspendUser(userId: string, masterId: string) {
-    await updateUser(userId, {
-      status: 'suspended',
-      approved_by: masterId,
-      approved_at: new Date().toISOString(),
-    });
-  }
-
-  async function makeAdmin(userId: string) {
-    await updateUser(userId, {
-      role: 'admin',
-    });
-  }
-
-  async function makeUser(userId: string) {
-    await updateUser(userId, {
-      role: 'user',
-    });
-  }
-
-  async function makeFull(userId: string) {
-    await updateUser(userId, {
-      account_type: 'full',
-    });
-  }
-
-  async function makeFree(userId: string) {
-    await updateUser(userId, {
-      account_type: 'free',
-    });
-  }
-
-  function statusBadge(status: string) {
-    const styles: Record<string, string> = {
-      active: 'bg-green-100 text-green-700',
-      pending: 'bg-yellow-100 text-yellow-700',
-      suspended: 'bg-red-100 text-red-700',
-    };
-
-    return (
-      <span className={`px-2 py-1 rounded-full text-xs font-semibold ${styles[status] || 'bg-gray-100 text-gray-700'}`}>
-        {status}
-      </span>
-    );
-  }
-
-  function roleBadge(role: string) {
-    const styles: Record<string, string> = {
-      master_admin: 'bg-purple-100 text-purple-700',
-      admin: 'bg-blue-100 text-blue-700',
-      user: 'bg-gray-100 text-gray-700',
-    };
-
-    return (
-      <span className={`px-2 py-1 rounded-full text-xs font-semibold ${styles[role] || 'bg-gray-100 text-gray-700'}`}>
-        {role}
-      </span>
-    );
-  }
-
-  function accountBadge(type: string) {
-    const styles: Record<string, string> = {
-      full: 'bg-emerald-100 text-emerald-700',
-      free: 'bg-orange-100 text-orange-700',
-    };
-
-    return (
-      <span className={`px-2 py-1 rounded-full text-xs font-semibold ${styles[type] || 'bg-gray-100 text-gray-700'}`}>
-        {type}
-      </span>
-    );
-  }
-
-  if (profile?.role !== 'master_admin') {
-    return <div className="card">Akses hanya untuk master admin.</div>;
+  if (profile?.role !== "master_admin") {
+    return <div className="card">Akses hanya untuk master admin.</div>
   }
 
   return (
-    <div className="page-stack">
+    <div className="page-shell">
       <div className="page-header">
         <div>
-          <h1>Pengurusan pengguna</h1>
-          <p className="muted">Master admin boleh lihat semua pengguna dan upgrade akaun selepas pembayaran.</p>
+          <h1 className="page-title">Pengurusan pengguna</h1>
+          <p className="page-subtitle">
+            Master admin boleh aktifkan akaun, tetapkan role, upgrade premium, dan semak output penggubal.
+          </p>
         </div>
+        <button type="button" className="btn btn-light" onClick={() => void loadUsers()}>
+          Refresh
+        </button>
       </div>
 
-      <div className="card">
-        {loading ? <p>Loading...</p> : null}
-        {error ? <p className="error-text">{error}</p> : null}
+      <div className="stats-grid stats-grid-compact">
+        <UserStat title="Admin/Penggubal" value={summary.admins} />
+        <UserStat title="Premium User" value={summary.premium} />
+        <UserStat title="Free User" value={summary.free} />
+        <UserStat title="Pending" value={summary.pending} />
+      </div>
+
+      <section className="card-block">
+        {loading && <p>Loading...</p>}
+        {error && <p className="error-text">{error}</p>}
+
         <div className="table-wrap">
-          <table>
+          <table className="admin-user-table">
             <thead>
               <tr>
-                <th>Nama</th>
-                <th>Email</th>
-                <th>Role</th>
-                <th>Akaun</th>
+                <th>Pengguna</th>
+                <th>Role / Akaun</th>
                 <th>Status</th>
+                <th>Output Item</th>
+                <th>Kuota AI</th>
                 <th>Tindakan</th>
               </tr>
             </thead>
             <tbody>
-              {users.map((user) => (
-                <tr key={user.id}>
-                  <td>{user.full_name || '-'}</td>
-                  <td>{user.email || '-'}</td>
-                  <td className="p-3 border">{roleBadge(user.role)}</td>
-                  <td className="p-3 border">{accountBadge(user.account_type)}</td>
-                  <td className="p-3 border">{statusBadge(user.status)}</td>
-                  <td className="p-3 border">
-                    {user.role !== "master_admin" ? (
-                      <div className="flex flex-wrap gap-2">
-                        {user.status !== "active" ? (
-                          <button
-                            onClick={() => activateUser(user.id, profile.id)}
-                            className="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded text-sm"
-                          >
-                            Aktifkan
-                          </button>
-                        ) : (
-                          <button
-                            onClick={() => suspendUser(user.id, profile.id)}
-                            className="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded text-sm"
-                          >
-                            Suspend
-                          </button>
-                        )}
+              {users.map((user) => {
+                const userMetrics = metrics[user.id] || emptyUserMetrics()
+                const aiRemaining =
+                  user.role === "master_admin" ? "Tiada had" : Math.max(ADMIN_AI_LIMIT - userMetrics.aiUsed, 0)
 
-                        {user.role !== "admin" ? (
-                          <button
-                            onClick={() => makeAdmin(user.id)}
-                            className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-sm"
-                          >
-                            Jadi Admin
-                          </button>
+                return (
+                  <tr key={user.id}>
+                    <td>
+                      <div className="user-cell">
+                        <strong>{user.full_name || "-"}</strong>
+                        <span>{user.email || "-"}</span>
+                      </div>
+                    </td>
+                    <td>
+                      <div className="badge-stack">
+                        <Badge tone={user.role === "master_admin" ? "purple" : user.role === "admin" ? "blue" : "gray"}>
+                          {roleLabel(user.role)}
+                        </Badge>
+                        <Badge tone={user.account_type === "full" ? "green" : "orange"}>
+                          {user.account_type === "full" ? "premium/full" : "free"}
+                        </Badge>
+                      </div>
+                    </td>
+                    <td>
+                      <Badge tone={user.status === "active" ? "green" : user.status === "pending" ? "orange" : "red"}>
+                        {user.status}
+                      </Badge>
+                    </td>
+                    <td>
+                      <div className="metric-mini">
+                        <span>Total: <strong>{userMetrics.total}</strong></span>
+                        <span>K1: <strong>{userMetrics.paper1}</strong></span>
+                        <span>K2: <strong>{userMetrics.paper2}</strong></span>
+                        <span>Semakan: <strong>{userMetrics.pending}</strong></span>
+                        <span>Published: <strong>{userMetrics.published}</strong></span>
+                      </div>
+                    </td>
+                    <td>
+                      <div className="quota-pill">
+                        {user.role === "master_admin" ? (
+                          <strong>{aiRemaining}</strong>
                         ) : (
-                          <button
-                            onClick={() => makeUser(user.id)}
-                            className="bg-slate-600 hover:bg-slate-700 text-white px-3 py-1 rounded text-sm"
-                          >
-                            Jadi User
-                          </button>
-                        )}
-
-                        {user.account_type !== "full" ? (
-                          <button
-                            onClick={() => makeFull(user.id)}
-                            className="bg-purple-600 hover:bg-purple-700 text-white px-3 py-1 rounded text-sm"
-                          >
-                            Full
-                          </button>
-                        ) : (
-                          <button
-                            onClick={() => makeFree(user.id)}
-                            className="bg-amber-500 hover:bg-amber-600 text-black px-3 py-1 rounded text-sm"
-                          >
-                            Free
-                          </button>
+                          <>
+                            <strong>{aiRemaining}</strong>
+                            <span>/ {ADMIN_AI_LIMIT} baki</span>
+                          </>
                         )}
                       </div>
-                    ) : (
-                      <span className="text-gray-400">-</span>
-                    )}
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                    <td>
+                      {user.role === "master_admin" ? (
+                        <span className="muted">-</span>
+                      ) : (
+                        <div className="user-action-grid">
+                          {user.status !== "active" ? (
+                            <button
+                              type="button"
+                              className="btn btn-success btn-sm"
+                              onClick={() =>
+                                updateUser(user.id, {
+                                  status: "active",
+                                  approved_by: profile.id,
+                                  approved_at: new Date().toISOString(),
+                                })
+                              }
+                            >
+                              Aktifkan
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              className="btn btn-danger btn-sm"
+                              onClick={() =>
+                                updateUser(user.id, {
+                                  status: "suspended",
+                                  approved_by: profile.id,
+                                  approved_at: new Date().toISOString(),
+                                })
+                              }
+                            >
+                              Suspend
+                            </button>
+                          )}
+
+                          <button
+                            type="button"
+                            className="btn btn-light btn-sm"
+                            onClick={() => updateUser(user.id, { role: user.role === "admin" ? "user" : "admin" })}
+                          >
+                            {user.role === "admin" ? "Jadi User" : "Jadi Admin"}
+                          </button>
+
+                          <button
+                            type="button"
+                            className="btn btn-light btn-sm"
+                            onClick={() =>
+                              updateUser(user.id, {
+                                account_type: user.account_type === "full" ? "free" : "full",
+                              })
+                            }
+                          >
+                            {user.account_type === "full" ? "Set Free" : "Set Premium"}
+                          </button>
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         </div>
-      </div>
+      </section>
     </div>
-  );
+  )
+}
+
+function UserStat({ title, value }: { title: string; value: number }) {
+  return (
+    <div className="card stat-card stat-card-center">
+      <h3>{title}</h3>
+      <strong>{value}</strong>
+    </div>
+  )
+}
+
+function Badge({ tone, children }: { tone: string; children: React.ReactNode }) {
+  return <span className={`badge badge-${tone}`}>{children}</span>
+}
+
+function roleLabel(role: Profile["role"]) {
+  if (role === "master_admin") return "Master Admin"
+  if (role === "admin") return "Admin/Penggubal"
+  return "User"
+}
+
+function emptyUserMetrics(): UserMetrics {
+  return { total: 0, paper1: 0, paper2: 0, pending: 0, published: 0, aiUsed: 0 }
+}
+
+async function loadUserMetrics(users: Profile[]) {
+  const output: Record<string, UserMetrics> = {}
+  const start = new Date()
+  start.setDate(1)
+  start.setHours(0, 0, 0, 0)
+
+  await Promise.all(
+    users.map(async (user) => {
+      const [total, paper1, paper2, pending, published, aiUsed] = await Promise.all([
+        countByUser(user.id, {}),
+        countByUser(user.id, { paper: "paper_1" }),
+        countByUser(user.id, { paper: "paper_2" }),
+        countByUser(user.id, { status: "pending_review" }),
+        countByUser(user.id, { status: "published" }),
+        countMonthlyAiByUser(user.id, start.toISOString()),
+      ])
+
+      output[user.id] = { total, paper1, paper2, pending, published, aiUsed }
+    }),
+  )
+
+  return output
+}
+
+async function countByUser(profileId: string, filters: { paper?: string; status?: string }) {
+  let query = supabase.from("items").select("id", { count: "exact", head: true }).eq("created_by", profileId)
+  if (filters.paper) query = query.eq("paper", filters.paper)
+  if (filters.status) query = query.eq("status", filters.status)
+  const { count, error } = await query
+  if (error) {
+    console.warn("User item count skipped", error)
+    return 0
+  }
+  return count || 0
+}
+
+async function countMonthlyAiByUser(profileId: string, startIso: string) {
+  const { count, error } = await supabase
+    .from("ai_usage_logs")
+    .select("id", { count: "exact", head: true })
+    .eq("profile_id", profileId)
+    .eq("usage_type", "generate_marking_scheme")
+    .gte("created_at", startIso)
+
+  if (error) {
+    console.warn("User AI count skipped", error)
+    return 0
+  }
+  return count || 0
 }

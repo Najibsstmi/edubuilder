@@ -6,6 +6,7 @@ import { useAuth } from "../contexts/AuthContext"
 type ItemRow = {
   id: string
   item_code: string
+  created_by: string | null
   tingkatan: 4 | 5
   paper: "paper_1" | "paper_2"
   section: "A" | "B" | "C" | null
@@ -94,7 +95,7 @@ const emptyStats: BankStats = {
 }
 
 export default function BankSoalanAdmin() {
-  const { user } = useAuth()
+  const { user, profile } = useAuth()
   const [items, setItems] = useState<ItemRow[]>([])
   const [stats, setStats] = useState<BankStats>(emptyStats)
   const [loading, setLoading] = useState(true)
@@ -130,6 +131,7 @@ export default function BankSoalanAdmin() {
         `
         id,
         item_code,
+        created_by,
         tingkatan,
         paper,
         section,
@@ -561,6 +563,9 @@ export default function BankSoalanAdmin() {
                   <div className="bank-item-top">
                     <div>
                       <div className="bank-item-code">{item.item_code}</div>
+                      {isOwnAdminItem(item, profile?.id, profile?.role) && (
+                        <div className="bank-item-owner-note">Item sendiri: perlu disemak oleh admin lain.</div>
+                      )}
                       <div className="bank-item-meta">
                         <Badge tone="blue">
                           {item.paper === "paper_1" ? "Kertas 1" : "Kertas 2"}
@@ -630,7 +635,7 @@ export default function BankSoalanAdmin() {
                       </button>
                     )}
 
-                    {item.status !== "approved" && item.status !== "published" && item.status !== "archived" && (
+                    {item.status !== "approved" && item.status !== "published" && item.status !== "archived" && canReviewItem(item, profile?.id, profile?.role) && (
                       <button
                         type="button"
                         className="btn btn-light btn-sm"
@@ -641,7 +646,7 @@ export default function BankSoalanAdmin() {
                       </button>
                     )}
 
-                    {item.status !== "published" && item.status !== "archived" && (
+                    {item.status !== "published" && item.status !== "archived" && canReviewItem(item, profile?.id, profile?.role) && (
                       <button
                         type="button"
                         className="btn btn-primary btn-sm"
@@ -652,7 +657,7 @@ export default function BankSoalanAdmin() {
                       </button>
                     )}
 
-                    {item.status !== "rejected" && item.status !== "published" && item.status !== "archived" && (
+                    {item.status !== "rejected" && item.status !== "published" && item.status !== "archived" && canReviewItem(item, profile?.id, profile?.role) && (
                       <button
                         type="button"
                         className="btn btn-light btn-sm"
@@ -1039,6 +1044,16 @@ function getPaperPriority(paper: ItemRow["paper"], section: ItemRow["section"]) 
   if (section === "B") return 3
   if (section === "C") return 4
   return 5
+}
+
+function canReviewItem(item: ItemRow, profileId?: string | null, role?: string | null) {
+  if (role === "master_admin") return true
+  if (role !== "admin") return false
+  return Boolean(profileId && item.created_by !== profileId)
+}
+
+function isOwnAdminItem(item: ItemRow, profileId?: string | null, role?: string | null) {
+  return role === "admin" && Boolean(profileId && item.created_by === profileId)
 }
 
 async function fetchBankStats(filters: FilterState): Promise<BankStats> {

@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
+import { BrandLogo } from '../components/BrandLogo';
 import type { School } from '../types';
 
 function getSignupErrorMessage(message = '') {
@@ -111,6 +112,7 @@ export function SignupPage() {
   return (
     <div className="auth-page">
       <form className="card auth-card wide" onSubmit={onSubmit}>
+        <BrandLogo centered to="/signup" />
         <h1>Daftar EduBuilder</h1>
         <label>
           Nama penuh

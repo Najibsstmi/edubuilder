@@ -1,6 +1,7 @@
 import { FormEvent, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
+import { BrandLogo } from '../components/BrandLogo';
 
 export function LoginPage() {
   const navigate = useNavigate();
@@ -30,6 +31,7 @@ export function LoginPage() {
   return (
     <div className="auth-page">
       <form className="card auth-card" onSubmit={onSubmit}>
+        <BrandLogo centered to="/login" />
         <h1>Log masuk EduBuilder</h1>
         <label>
           Email

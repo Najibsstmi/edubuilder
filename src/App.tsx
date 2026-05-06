@@ -62,9 +62,9 @@ export default function App() {
         <Route
           path="import-pukal"
           element={
-            <ProtectedAdmin>
+            <ProtectedMaster>
               <BulkImportPage />
-            </ProtectedAdmin>
+            </ProtectedMaster>
           }
         />
         <Route path="build" element={<Navigate to="/builder-set" replace />} />

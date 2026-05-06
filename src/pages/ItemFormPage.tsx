@@ -1170,6 +1170,8 @@ export default function ItemFormPage() {
         ? `Jawapan: ${answerFinal}`
         : generateMarkingSchemeHtml()
 
+      const finalStatus = profile.role === "master_admin" ? status : "pending_review"
+
       const payload = {
         item_code: finalItemCode,
         updated_by: profile.id,
@@ -1211,7 +1213,7 @@ export default function ItemFormPage() {
         source_year: sourceYear ? Number(sourceYear) : null,
         source_school: sourceSchool || profileSchoolName || null,
 
-        status,
+        status: finalStatus,
       }
 
       let savedItemId = editId || ""
@@ -1319,9 +1321,17 @@ export default function ItemFormPage() {
 
       if (!editId) {
         prepareNextQuestionForm()
-        setMessage("Soalan berjaya disimpan. Borang baharu disediakan untuk soalan seterusnya.")
+        setMessage(
+          profile.role === "master_admin"
+            ? "Soalan berjaya disimpan. Borang baharu disediakan untuk soalan seterusnya."
+            : "Soalan berjaya dihantar untuk semakan. Borang baharu disediakan untuk soalan seterusnya.",
+        )
       } else {
-        setMessage("Soalan berjaya dikemaskini.")
+        setMessage(
+          profile.role === "master_admin"
+            ? "Soalan berjaya dikemaskini."
+            : "Soalan berjaya dikemaskini dan dihantar untuk semakan.",
+        )
       }
     } catch (error: any) {
       console.error(error)
@@ -2299,4 +2309,3 @@ function Badge({
 }) {
   return <span className={`badge badge-${tone}`}>{children}</span>
 }
-

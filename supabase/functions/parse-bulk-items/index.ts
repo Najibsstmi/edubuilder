@@ -424,7 +424,9 @@ Deno.serve(async (req) => {
 
     if (profileError || !profile) return jsonResponse({ error: "Profil pengguna tidak dijumpai." }, 403)
     if (profile.status !== "active") return jsonResponse({ error: "Akaun belum aktif." }, 403)
-    if (profile.role === "user") return jsonResponse({ error: "User tidak mempunyai akses import AI." }, 403)
+    if (profile.role !== "master_admin") {
+      return jsonResponse({ error: "Import pukal AI hanya untuk master admin." }, 403)
+    }
 
     const isUnlimited = profile.role === "master_admin"
     const monthlyLimit = 30

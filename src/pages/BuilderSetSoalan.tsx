@@ -8,6 +8,7 @@ type BuilderMode = "custom" | "spm"
 type DifficultyType = "rendah" | "sederhana" | "tinggi"
 type DifficultyMode = "random" | DifficultyType | "distribution"
 type TingkatanFilter = "4" | "5" | "both"
+type TopicSelectionMode = "quick" | "manual"
 type BuildMode =
   | "full_exam"
   | "topical_practice"
@@ -87,6 +88,8 @@ export default function BuilderSetSoalan() {
     sederhana: 8,
     tinggi: 4,
   })
+  const [topicSelectionMode, setTopicSelectionMode] = useState<TopicSelectionMode>("quick")
+  const [topicTargets, setTopicTargets] = useState<Record<string, number>>({})
   const [selectedBidangCodes, setSelectedBidangCodes] = useState<string[]>([])
   const [generatedSet, setGeneratedSet] = useState<Item[]>([])
   const [message, setMessage] = useState("")
@@ -103,6 +106,16 @@ export default function BuilderSetSoalan() {
   const baseAvailableItems = useMemo(() => {
     return items.filter((item) => tingkatanValues.includes(item.tingkatan) && item.paper === paper)
   }, [items, paper, tingkatanValues])
+
+  const selectedTopicKeys = useMemo(() => {
+    if (topicSelectionMode === "manual") {
+      return Object.entries(topicTargets)
+        .filter(([, value]) => value > 0)
+        .map(([key]) => key)
+    }
+
+    return selectedBidangCodes
+  }, [selectedBidangCodes, topicSelectionMode, topicTargets])
 
   const bidangOptions = useMemo(() => {
     const source = items.filter(
@@ -138,9 +151,9 @@ export default function BuilderSetSoalan() {
         pool = pool.filter((item) => item.item_type === "mcq")
       }
 
-      if (selectedBidangCodes.length > 0) {
+      if (selectedTopicKeys.length > 0) {
         pool = pool.filter((item) =>
-          selectedBidangCodes.includes(getBidangKey(item)),
+          selectedTopicKeys.includes(getBidangKey(item)),
         )
       }
     }
@@ -154,7 +167,7 @@ export default function BuilderSetSoalan() {
     }
 
     return pool
-  }, [baseAvailableItems, difficultyMode, mode, paper, section, selectedBidangCodes])
+  }, [baseAvailableItems, difficultyMode, mode, paper, section, selectedTopicKeys])
 
   const customStats = useMemo(() => {
     return {
@@ -162,9 +175,9 @@ export default function BuilderSetSoalan() {
       rendah: customPool.filter((item) => item.difficulty_level === "rendah").length,
       sederhana: customPool.filter((item) => item.difficulty_level === "sederhana").length,
       tinggi: customPool.filter((item) => item.difficulty_level === "tinggi").length,
-      bidang: selectedBidangCodes.length || bidangOptions.length,
+      bidang: selectedTopicKeys.length || bidangOptions.length,
     }
-  }, [bidangOptions.length, customPool, selectedBidangCodes.length])
+  }, [bidangOptions.length, customPool, selectedTopicKeys.length])
 
   async function fetchItems() {
     setLoadingItems(true)
@@ -244,6 +257,36 @@ export default function BuilderSetSoalan() {
     setGeneratedSet([])
   }
 
+  function setTopicTarget(key: string, value: number) {
+    setTopicTargets((prev) => ({
+      ...prev,
+      [key]: Math.max(0, value),
+    }))
+    setGeneratedSet([])
+  }
+
+  function toggleTopicTarget(key: string) {
+    setTopicTargets((prev) => ({
+      ...prev,
+      [key]: prev[key] > 0 ? 0 : 1,
+    }))
+    setGeneratedSet([])
+  }
+
+  function selectAllTopicTargets() {
+    const next: Record<string, number> = {}
+    bidangOptions.forEach((option) => {
+      next[option.key] = Math.min(option.count, 1)
+    })
+    setTopicTargets(next)
+    setGeneratedSet([])
+  }
+
+  function clearTopicTargets() {
+    setTopicTargets({})
+    setGeneratedSet([])
+  }
+
   function selectAllBidang() {
     setSelectedBidangCodes(bidangOptions.map((option) => option.key))
     setGeneratedSet([])
@@ -299,9 +342,44 @@ export default function BuilderSetSoalan() {
     return shuffle(result)
   }
 
+  function buildWithTopicTargets(pool: Item[]) {
+    const entries = Object.entries(topicTargets).filter(([, target]) => target > 0)
+    const requestedTotal = entries.reduce((sum, [, target]) => sum + target, 0)
+
+    if (entries.length === 0) {
+      setMessage("Sila tetapkan bilangan soalan untuk sekurang-kurangnya satu bab.")
+      return null
+    }
+
+    if (requestedTotal !== totalSoalan) {
+      setMessage(`Jumlah taburan bab mesti sama dengan jumlah soalan (${totalSoalan}). Sekarang: ${requestedTotal}.`)
+      return null
+    }
+
+    const result: Item[] = []
+
+    for (const [key, target] of entries) {
+      const topicPool = pool.filter((item) => getBidangKey(item) === key)
+      if (topicPool.length < target) {
+        const option = bidangOptions.find((row) => row.key === key)
+        setMessage(`${option?.code || "Bab"} hanya ada ${topicPool.length} item sesuai, tetapi diminta ${target}.`)
+        return null
+      }
+
+      result.push(...shuffle(topicPool).slice(0, target))
+    }
+
+    return shuffle(result)
+  }
+
   function buildCustom() {
     if (totalSoalan < 1) {
       setMessage("Bilangan soalan mesti sekurang-kurangnya 1.")
+      return
+    }
+
+    if (topicSelectionMode === "manual" && difficultyMode === "distribution") {
+      setMessage("Taburan Bab belum boleh digabungkan dengan Tetapkan taburan aras. Pilih Bebas/random atau aras tertentu dahulu.")
       return
     }
 
@@ -311,7 +389,9 @@ export default function BuilderSetSoalan() {
     }
 
     const result =
-      difficultyMode === "distribution"
+      topicSelectionMode === "manual"
+        ? buildWithTopicTargets(customPool)
+        : difficultyMode === "distribution"
         ? buildWithDistribution(customPool)
         : distributeRandom(customPool, totalSoalan)
 
@@ -554,6 +634,7 @@ export default function BuilderSetSoalan() {
                   onChange={(event) => {
                     setTingkatan(event.target.value as TingkatanFilter)
                     setSelectedBidangCodes([])
+                    setTopicTargets({})
                     setGeneratedSet([])
                   }}
                 >
@@ -570,6 +651,8 @@ export default function BuilderSetSoalan() {
                   onChange={(event) => {
                     setPaper(event.target.value as PaperType)
                     setSection("")
+                    setSelectedBidangCodes([])
+                    setTopicTargets({})
                     setGeneratedSet([])
                   }}
                 >
@@ -678,15 +761,64 @@ export default function BuilderSetSoalan() {
               <div className="card-head builder-card-head-row">
                 <div>
                   <h2>Bab / Bidang Pembelajaran</h2>
-                  <p>Tick bidang yang ingin dimasukkan dalam latihan {paper === "paper_1" ? "Kertas 1" : "Kertas 2"}.</p>
+                  <p>Pilih secara cepat atau tetapkan bilangan item untuk setiap bab.</p>
                 </div>
                 <div className="action-row">
-                  <button type="button" className="btn btn-light btn-sm" onClick={selectAllBidang}>
-                    Pilih Semua
+                  <button
+                    type="button"
+                    className={`btn btn-sm ${topicSelectionMode === "quick" ? "btn-primary" : "btn-light"}`}
+                    onClick={() => {
+                      setTopicSelectionMode("quick")
+                      setGeneratedSet([])
+                    }}
+                  >
+                    Mod Cepat
                   </button>
-                  <button type="button" className="btn btn-light btn-sm" onClick={clearBidangSelection}>
-                    Bebas Semua
+                  <button
+                    type="button"
+                    className={`btn btn-sm ${topicSelectionMode === "manual" ? "btn-primary" : "btn-light"}`}
+                    onClick={() => {
+                      setTopicSelectionMode("manual")
+                      setGeneratedSet([])
+                    }}
+                  >
+                    Taburan Bab
                   </button>
+                </div>
+              </div>
+
+              <div className="builder-topic-toolbar">
+                <div className="builder-topic-summary">
+                  {topicSelectionMode === "manual" ? (
+                    <>
+                      Jumlah taburan bab: <strong>{getTopicTargetTotal(topicTargets)}</strong> / {totalSoalan}
+                    </>
+                  ) : (
+                    <>
+                      Bidang dipilih: <strong>{selectedBidangCodes.length || bidangOptions.length}</strong>
+                    </>
+                  )}
+                </div>
+                <div className="action-row">
+                  {topicSelectionMode === "manual" ? (
+                    <>
+                      <button type="button" className="btn btn-light btn-sm" onClick={selectAllTopicTargets}>
+                        Isi 1 Setiap Bab
+                      </button>
+                      <button type="button" className="btn btn-light btn-sm" onClick={clearTopicTargets}>
+                        Kosongkan
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button type="button" className="btn btn-light btn-sm" onClick={selectAllBidang}>
+                        Pilih Semua
+                      </button>
+                      <button type="button" className="btn btn-light btn-sm" onClick={clearBidangSelection}>
+                        Bebas Semua
+                      </button>
+                    </>
+                  )}
                 </div>
               </div>
 
@@ -695,19 +827,45 @@ export default function BuilderSetSoalan() {
               ) : (
                 <div className="builder-topic-grid">
                   {bidangOptions.map((option) => (
-                    <label key={option.key} className="builder-topic-option">
+                    <div
+                      key={option.key}
+                      className={`builder-topic-option ${
+                        topicSelectionMode === "manual" && (topicTargets[option.key] || 0) > 0 ? "active" : ""
+                      }`}
+                    >
                       <input
                         type="checkbox"
-                        checked={selectedBidangCodes.includes(option.key)}
-                        onChange={() => toggleBidang(option.key)}
+                        checked={
+                          topicSelectionMode === "manual"
+                            ? (topicTargets[option.key] || 0) > 0
+                            : selectedBidangCodes.includes(option.key)
+                        }
+                        onChange={() =>
+                          topicSelectionMode === "manual"
+                            ? toggleTopicTarget(option.key)
+                            : toggleBidang(option.key)
+                        }
                       />
-                      <span>
+                      <div className="builder-topic-content">
                         <strong>
                           T{option.tingkatan} · {option.code === "unknown" ? "Tanpa kod" : option.code} - {option.name}
                         </strong>
                         <small>{option.count} item published</small>
-                      </span>
-                    </label>
+                      </div>
+                      {topicSelectionMode === "manual" && (
+                        <div className="builder-topic-quota">
+                          <span>Bil.</span>
+                          <input
+                            className="input"
+                            type="number"
+                            min={0}
+                            max={option.count}
+                            value={topicTargets[option.key] || 0}
+                            onChange={(event) => setTopicTarget(option.key, Number(event.target.value))}
+                          />
+                        </div>
+                      )}
+                    </div>
                   ))}
                 </div>
               )}
@@ -1040,6 +1198,10 @@ function groupBySection(items: Item[]) {
 
 function getBidangKey(item: Pick<Item, "tingkatan" | "bidang_learning_code">) {
   return `T${item.tingkatan}:${item.bidang_learning_code || "unknown"}`
+}
+
+function getTopicTargetTotal(topicTargets: Record<string, number>) {
+  return Object.values(topicTargets).reduce((sum, value) => sum + Math.max(0, Number(value) || 0), 0)
 }
 
 function getSavedSetLimit(profile: { role?: string; account_type?: string } | null) {

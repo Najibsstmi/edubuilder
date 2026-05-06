@@ -1,5 +1,6 @@
-import { Link, NavLink, Outlet } from 'react-router-dom';
+import { NavLink, Outlet } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { BrandLogo } from './BrandLogo';
 
 export function AppLayout() {
   const { profile, signOut } = useAuth();
@@ -7,9 +8,7 @@ export function AppLayout() {
   return (
     <div className="app-shell">
       <aside className="sidebar">
-        <Link to="/" className="brand">
-          EduBuilder
-        </Link>
+        <BrandLogo compact />
         <div className="profile-box">
           <div className="profile-name">{profile?.full_name || 'Pengguna'}</div>
           <div className="profile-meta">
@@ -25,9 +24,7 @@ export function AppLayout() {
           {(profile?.role === 'admin' || profile?.role === 'master_admin') && (
             <NavLink to="/masukkan-soalan">Masukkan Soalan</NavLink>
           )}
-          {(profile?.role === 'admin' || profile?.role === 'master_admin') && (
-            <NavLink to="/import-pukal">Import Pukal</NavLink>
-          )}
+          {profile?.role === 'master_admin' && <NavLink to="/import-pukal">Import Pukal</NavLink>}
           {(profile?.role === 'admin' || profile?.role === 'master_admin') && (
             <NavLink to="/bank-soalan-admin">Bank Soalan</NavLink>
           )}
