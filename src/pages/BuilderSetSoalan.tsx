@@ -1214,10 +1214,13 @@ function isInstructionSubQuestionPreview(sub: ItemSubQuestion) {
 
 function shouldShowAnswerSpace(item: Item, sub: ItemSubQuestion) {
   if (isInstructionSubQuestionPreview(sub)) return false
+  if (sub.response_type === "provided_space") return false
   return item.section === "A" || item.section === "B"
 }
 
 function AnswerSpace({ responseType }: { responseType: string }) {
+  if (responseType === "provided_space") return null
+
   if (responseType === "structured_text") {
     return (
       <div className="answer-space">

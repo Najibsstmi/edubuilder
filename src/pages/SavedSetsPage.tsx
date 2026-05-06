@@ -685,6 +685,7 @@ function isInstructionSubQuestionPreview(sub: ItemSubQuestion) {
 function shouldShowAnswerSpace(item: SavedItem | null, sub: ItemSubQuestion) {
   if (!item) return false
   if (isInstructionSubQuestionPreview(sub)) return false
+  if (sub.response_type === "provided_space") return false
   if (item.section === "C") return false
   return item.section === "A" || item.section === "B"
 }
@@ -699,6 +700,8 @@ function AnswerSpace({
   const lineCount = Math.max(1, marks || 1)
 
   if (responseType === "instruction") return null
+
+  if (responseType === "provided_space") return null
 
   if (responseType === "structured_text") {
     return <AnswerLines count={Math.max(2, lineCount)} />
