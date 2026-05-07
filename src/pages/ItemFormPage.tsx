@@ -2074,7 +2074,7 @@ export default function ItemFormPage() {
 
             <Card
               title="Sumber Item"
-              subtitle="Sumber dan tahun rujukan. Penggubal direkod automatik melalui akaun login."
+              subtitle="Sumber dan tahun rujukan. Nama penyedia direkod automatik melalui akaun login."
             >
               <div className="form-grid source-item-grid">
                 <Field label="Sumber">
@@ -2095,9 +2095,9 @@ export default function ItemFormPage() {
                   />
                 </Field>
 
-                <Field label="Penggubal Item">
+                <Field label="Disediakan Oleh">
                   <div className="source-author-card">
-                    <span>Penggubal:</span>
+                    <span>Disediakan oleh:</span>
                     <strong>{authorAuditText}</strong>
                   </div>
                 </Field>

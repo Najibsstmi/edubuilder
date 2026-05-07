@@ -125,7 +125,7 @@ export default function MyProfilePage() {
         <div>
           <h1>Profil Saya</h1>
           <p className="muted">
-            Kemas kini nama dan sekolah supaya rekod penggubal item dipaparkan dengan betul.
+            Kemas kini nama dan sekolah supaya rekod penyedia item dipaparkan dengan betul.
           </p>
         </div>
       </div>
@@ -205,7 +205,7 @@ export default function MyProfilePage() {
         </div>
 
         <p className="muted small">
-          Nama penuh akan digunakan sebagai nama penggubal. Sekolah akan dipaparkan bersama nama jika dipilih.
+          Nama penuh akan digunakan pada label Disediakan Oleh. Sekolah akan dipaparkan bersama nama jika dipilih.
         </p>
 
         {error && <p className="error-text">{error}</p>}

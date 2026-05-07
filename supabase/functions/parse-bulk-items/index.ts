@@ -49,6 +49,10 @@ function buildPrompt(payload: any, standards: AcademicStandard[], constructs: Co
     .map((c) => `${c.construct_code} | ${c.construct_group} | ${c.aspect_name}`)
     .join("\n")
 
+  if (payload.paperType === "paper_2") {
+    return buildPaper2Prompt(payload, constructCatalog)
+  }
+
   return `
 Anda ialah pembantu import item Sains SPM KSSM 1511.
 Tugas: pecahkan teks mentah kepada item objektif Kertas 1 dan cadangkan metadata akademik.
@@ -90,7 +94,51 @@ ${payload.rawText || ""}
 `.trim()
 }
 
-const itemSchema = {
+function buildPaper2Prompt(payload: any, constructCatalog: string) {
+  return `
+Anda ialah pembantu import item Sains SPM KSSM 1511.
+Tugas: pecahkan teks mentah kepada item subjektif Kertas 2, termasuk sub-soalan, markah, jenis respons, skema jawapan dan metadata akademik.
+
+Konteks:
+- Subjek: Sains KSSM SPM 1511
+- Kertas: Kertas 2
+- Fail import boleh mengandungi Bahagian A, B atau C dan campuran Tingkatan 4/5.
+- Tetapan bahasa: ${payload.languageMode === "bm_only" ? "Bahasa Melayu sahaja" : "Kekalkan Bahasa Melayu dan Bahasa Inggeris"}
+
+Peraturan penting:
+- Jangan tambah penerangan luar JSON.
+- Setiap item utama ialah satu nombor soalan besar, contohnya 1, 2, 5, 9, 11, 12.
+- Simpan nombor soalan besar dalam "questionNo".
+- Tentukan "section": "A", "B" atau "C" berdasarkan teks Bahagian/format/markah/nombor soalan. Jika tidak pasti, pilih paling hampir.
+- "stem" ialah stimulus/arahan utama sebelum sub-soalan, termasuk marker gambar [IMAGE_1] jika berkaitan.
+- "subQuestions" mesti mengandungi pecahan seperti (a), (b), (c)(i), (c)(ii), (d).
+- Jika baris seperti "(c) Berdasarkan eksperimen..., nyatakan:" hanya arahan induk tanpa markah, jadikan responseType "instruction" dan marks 0.
+- Jika sub-soalan sudah ada ruang jawapan/garisan dalam dokumen asal, gunakan responseType "provided_space".
+- Jika jawapan ringkas 1 markah, gunakan "short_text".
+- Jika memerlukan beberapa fakta/ayat, gunakan "structured_text".
+- Jika perlu jadual, gunakan "table".
+- Jika perlu pengiraan, gunakan "calculation".
+- Jika perlu melukis/lakaran, gunakan "drawing".
+- Jika rekacipta/reka bentuk, gunakan "design".
+- Jika skema jawapan ada, ekstrak ke "answerSchemeText".
+- Jika skema tidak ada, cadangkan jawapan/skema terbaik secara ringkas.
+- Jumlah "marks" item utama mesti hampir sama dengan jumlah markah sub-soalan bermarkah.
+- Jika tetapan bahasa ialah "Bahasa Melayu sahaja", buang ayat terjemahan Bahasa Inggeris yang mengulangi maksud ayat Bahasa Melayu.
+- Jangan buang istilah, simbol, label rajah, unit, nama bahan atau perkataan Inggeris yang memang sebahagian kandungan sains.
+- Jika terdapat marker gambar seperti [IMAGE_1], masukkan marker berkaitan dalam "imageRefs" pada item atau sub-soalan yang paling hampir.
+- Tentukan tingkatan setiap item berdasarkan topik, istilah, DSKP dan konteks soalan.
+- Konstruk bagi sub-soalan mesti dipilih daripada katalog konstruk diberi. Jangan reka kod baharu.
+- Aras kesukaran mestilah "rendah", "sederhana" atau "tinggi".
+
+Katalog Konstruk:
+${constructCatalog}
+
+Teks mentah:
+${payload.rawText || ""}
+`.trim()
+}
+
+const paper1Schema = {
   type: "object",
   additionalProperties: false,
   properties: {
@@ -160,6 +208,100 @@ const itemSchema = {
   required: ["items"],
 }
 
+const paper2Schema = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    items: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          questionNo: { type: "string" },
+          section: { type: "string", enum: ["", "A", "B", "C"] },
+          stem: { type: "string" },
+          marks: { type: "integer" },
+          imageRefs: { type: "array", items: { type: "string" } },
+          subQuestions: {
+            type: "array",
+            items: {
+              type: "object",
+              additionalProperties: false,
+              properties: {
+                label: { type: "string" },
+                subLabel: { type: "string" },
+                questionText: { type: "string" },
+                answerSchemeText: { type: "string" },
+                marks: { type: "integer" },
+                responseType: {
+                  type: "string",
+                  enum: [
+                    "instruction",
+                    "short_text",
+                    "structured_text",
+                    "table",
+                    "drawing",
+                    "design",
+                    "calculation",
+                    "provided_space",
+                  ],
+                },
+                mainConstruct: { type: "string" },
+                constructCode: { type: "string" },
+                difficultyLevel: { type: "string", enum: ["rendah", "sederhana", "tinggi"] },
+                imageRefs: { type: "array", items: { type: "string" } },
+              },
+              required: [
+                "label",
+                "subLabel",
+                "questionText",
+                "answerSchemeText",
+                "marks",
+                "responseType",
+                "mainConstruct",
+                "constructCode",
+                "difficultyLevel",
+                "imageRefs",
+              ],
+            },
+          },
+          metadata: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              tingkatan: { type: "integer", enum: [4, 5] },
+              theme_name: { type: "string" },
+              bidang_learning_code: { type: "string" },
+              bidang_learning_name: { type: "string" },
+              standard_kandungan: { type: "string" },
+              standard_pembelajaran: { type: "string" },
+              main_construct: { type: "string" },
+              construct_code: { type: "string" },
+              difficulty_level: { type: "string", enum: ["rendah", "sederhana", "tinggi"] },
+              topic_keywords: { type: "array", items: { type: "string" } },
+            },
+            required: [
+              "tingkatan",
+              "theme_name",
+              "bidang_learning_code",
+              "bidang_learning_name",
+              "standard_kandungan",
+              "standard_pembelajaran",
+              "main_construct",
+              "construct_code",
+              "difficulty_level",
+              "topic_keywords",
+            ],
+          },
+        },
+        required: ["questionNo", "section", "stem", "marks", "imageRefs", "subQuestions", "metadata"],
+      },
+    },
+  },
+  required: ["items"],
+}
+
 function extractJson(text: string) {
   const cleaned = text
     .replace(/^```json\s*/i, "")
@@ -183,6 +325,32 @@ function normalizeText(value: unknown) {
 function normalizeDifficulty(value: unknown) {
   const difficulty = normalizeText(value).toLowerCase()
   return ["rendah", "sederhana", "tinggi"].includes(difficulty) ? difficulty : "sederhana"
+}
+
+function normalizeSection(value: unknown) {
+  const section = normalizeText(value).toUpperCase()
+  return ["A", "B", "C"].includes(section) ? section : ""
+}
+
+function normalizeMarks(value: unknown, fallback = 1) {
+  const marks = Number(value)
+  if (!Number.isFinite(marks)) return fallback
+  return Math.max(0, Math.round(marks))
+}
+
+function normalizeResponseType(value: unknown) {
+  const responseType = normalizeText(value)
+  const allowed = [
+    "instruction",
+    "short_text",
+    "structured_text",
+    "table",
+    "drawing",
+    "design",
+    "calculation",
+    "provided_space",
+  ]
+  return allowed.includes(responseType) ? responseType : "short_text"
 }
 
 function normalizeTingkatan(value: unknown) {
@@ -289,6 +457,98 @@ function normalizeMetadata(
   }
 }
 
+function normalizeImageRefs(refs: unknown) {
+  return Array.isArray(refs)
+    ? refs
+        .map((ref: unknown) => String(ref || "").replace(/[\[\]]/g, "").trim())
+        .filter((ref: string) => /^IMAGE_\d+$/i.test(ref))
+    : []
+}
+
+function normalizePaper1Items(items: any[], standards: AcademicStandard[], constructs: Construct[]) {
+  return items
+    .filter((item: any) => item?.stem && item?.options)
+    .map((item: any) => {
+      const itemText = [
+        item.stem,
+        item.options?.A,
+        item.options?.B,
+        item.options?.C,
+        item.options?.D,
+      ].map((value) => String(value || "")).join(" ")
+      const metadata = normalizeMetadata(item.metadata || {}, standards, constructs, itemText)
+      return {
+        questionNo: String(item.questionNo || ""),
+        stem: String(item.stem || "").trim(),
+        options: {
+          A: String(item.options?.A || "").trim(),
+          B: String(item.options?.B || "").trim(),
+          C: String(item.options?.C || "").trim(),
+          D: String(item.options?.D || "").trim(),
+        },
+        answer: ["A", "B", "C", "D"].includes(String(item.answer || "").toUpperCase())
+          ? String(item.answer || "").toUpperCase()
+          : "",
+        imageRefs: normalizeImageRefs(item.imageRefs),
+        metadata,
+      }
+    })
+}
+
+function normalizePaper2Items(items: any[], standards: AcademicStandard[], constructs: Construct[]) {
+  return items
+    .filter((item: any) => item?.stem || Array.isArray(item?.subQuestions))
+    .map((item: any) => {
+      const subQuestions = Array.isArray(item.subQuestions) ? item.subQuestions : []
+      const itemText = [
+        item.stem,
+        ...subQuestions.flatMap((sub: any) => [
+          sub?.questionText,
+          sub?.answerSchemeText,
+        ]),
+      ].map((value) => String(value || "")).join(" ")
+      const metadata = normalizeMetadata(item.metadata || {}, standards, constructs, itemText)
+      const normalizedSubs = subQuestions
+        .map((sub: any, index: number) => {
+          const responseType = normalizeResponseType(sub?.responseType)
+          const marks = responseType === "instruction" ? 0 : normalizeMarks(sub?.marks, 1)
+          const subConstruct = findBestConstruct(
+            {
+              construct_code: sub?.constructCode || metadata.construct_code,
+              main_construct: sub?.mainConstruct || metadata.main_construct,
+            },
+            constructs,
+          )
+
+          return {
+            label: normalizeText(sub?.label || String.fromCharCode("a".charCodeAt(0) + index)).toLowerCase(),
+            subLabel: normalizeText(sub?.subLabel).toLowerCase(),
+            questionText: normalizeText(sub?.questionText),
+            answerSchemeText: normalizeText(sub?.answerSchemeText),
+            marks,
+            responseType: marks === 0 ? "instruction" : responseType,
+            mainConstruct: marks === 0 ? "" : subConstruct?.construct_group || metadata.main_construct,
+            constructCode: marks === 0 ? "" : subConstruct?.construct_code || metadata.construct_code,
+            difficultyLevel: marks === 0 ? "rendah" : normalizeDifficulty(sub?.difficultyLevel || metadata.difficulty_level),
+            imageRefs: normalizeImageRefs(sub?.imageRefs),
+          }
+        })
+        .filter((sub: any) => sub.questionText)
+
+      const totalMarks = normalizedSubs.reduce((sum: number, sub: any) => sum + (sub.responseType === "instruction" ? 0 : sub.marks), 0)
+
+      return {
+        questionNo: String(item.questionNo || ""),
+        section: normalizeSection(item.section),
+        stem: String(item.stem || "").trim(),
+        marks: totalMarks || normalizeMarks(item.marks, 5),
+        imageRefs: normalizeImageRefs(item.imageRefs),
+        subQuestions: normalizedSubs,
+        metadata,
+      }
+    })
+}
+
 async function callOpenAi(openAiKey: string, payload: any, standards: AcademicStandard[], constructs: Construct[]) {
   const requestBody = {
       model: "gpt-4o-mini",
@@ -300,7 +560,7 @@ async function callOpenAi(openAiKey: string, payload: any, standards: AcademicSt
         type: "json_schema",
         name: "bulk_import_items",
         strict: true,
-        schema: itemSchema,
+        schema: payload.paperType === "paper_2" ? paper2Schema : paper1Schema,
       },
     },
   }
@@ -359,7 +619,9 @@ async function callOpenAiLoose(
       input: `${buildPrompt(payload, standards, constructs)}
 
 Pulangkan JSON sahaja dalam bentuk:
-{"items":[{"questionNo":"","stem":"","options":{"A":"","B":"","C":"","D":""},"answer":"","imageRefs":[],"metadata":{"tingkatan":4,"theme_name":"","bidang_learning_code":"","bidang_learning_name":"","standard_kandungan":"","standard_pembelajaran":"","main_construct":"","construct_code":"","difficulty_level":"sederhana","topic_keywords":[]}}]}
+${payload.paperType === "paper_2"
+  ? `{"items":[{"questionNo":"","section":"A","stem":"","marks":5,"imageRefs":[],"subQuestions":[{"label":"a","subLabel":"","questionText":"","answerSchemeText":"","marks":1,"responseType":"short_text","mainConstruct":"","constructCode":"","difficultyLevel":"sederhana","imageRefs":[]}],"metadata":{"tingkatan":4,"theme_name":"","bidang_learning_code":"","bidang_learning_name":"","standard_kandungan":"","standard_pembelajaran":"","main_construct":"","construct_code":"","difficulty_level":"sederhana","topic_keywords":[]}}]}`
+  : `{"items":[{"questionNo":"","stem":"","options":{"A":"","B":"","C":"","D":""},"answer":"","imageRefs":[],"metadata":{"tingkatan":4,"theme_name":"","bidang_learning_code":"","bidang_learning_name":"","standard_kandungan":"","standard_pembelajaran":"","main_construct":"","construct_code":"","difficulty_level":"sederhana","topic_keywords":[]}}]}`}
 Jangan tambah markdown atau teks lain.`,
       max_output_tokens: 3500,
       temperature: 0,
@@ -478,43 +740,16 @@ Deno.serve(async (req) => {
     const constructRows = ((constructs || []) as Construct[])
     const batchResult = await callOpenAi(openAiKey, payload, standardRows, constructRows)
     const items = Array.isArray(batchResult.parsed.items) ? batchResult.parsed.items : []
-    const normalized = items
-      .filter((item: any) => item?.stem && item?.options)
-      .map((item: any) => {
-        const itemText = [
-          item.stem,
-          item.options?.A,
-          item.options?.B,
-          item.options?.C,
-          item.options?.D,
-        ].map((value) => String(value || "")).join(" ")
-        const metadata = normalizeMetadata(item.metadata || {}, standardRows, constructRows, itemText)
-        return {
-          questionNo: String(item.questionNo || ""),
-          stem: String(item.stem || "").trim(),
-          options: {
-            A: String(item.options?.A || "").trim(),
-            B: String(item.options?.B || "").trim(),
-            C: String(item.options?.C || "").trim(),
-            D: String(item.options?.D || "").trim(),
-          },
-          answer: ["A", "B", "C", "D"].includes(String(item.answer || "").toUpperCase())
-            ? String(item.answer || "").toUpperCase()
-            : "",
-          imageRefs: Array.isArray(item.imageRefs)
-            ? item.imageRefs
-                .map((ref: unknown) => String(ref || "").replace(/[\[\]]/g, "").trim())
-                .filter((ref: string) => /^IMAGE_\d+$/i.test(ref))
-            : [],
-          metadata,
-        }
-      })
+    const normalized = payload.paperType === "paper_2"
+      ? normalizePaper2Items(items, standardRows, constructRows)
+      : normalizePaper1Items(items, standardRows, constructRows)
 
     await supabase.from("ai_usage_logs").insert({
       profile_id: profile.id,
       usage_type: Number(payload.batchIndex || 0) === 0 ? "bulk_import_parse" : "bulk_import_parse_batch",
       input_snapshot: {
         languageMode: payload.languageMode || "bm_only",
+        paperType: payload.paperType || "paper_1",
         batchIndex: Number(payload.batchIndex || 0),
         batchCount: Number(payload.batchCount || 1),
         textLength: String(payload.rawText).length,

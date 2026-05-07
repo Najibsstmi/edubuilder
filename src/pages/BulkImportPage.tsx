@@ -9,10 +9,15 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl
 
 type DraftItem = {
   id: string
+  paper: "paper_1" | "paper_2"
   questionNo: string
+  section: "" | "A" | "B" | "C"
   stem: string
   options: Record<"A" | "B" | "C" | "D", string>
   answer: "" | "A" | "B" | "C" | "D"
+  marks: number
+  itemType: "mcq" | "structured" | "limited_response" | "open_response"
+  subQuestions: DraftSubQuestion[]
   imageRefs: string[]
   tingkatan: 4 | 5
   themeName: string
@@ -29,6 +34,20 @@ type DraftItem = {
   selected: boolean
 }
 
+type DraftSubQuestion = {
+  id: string
+  label: string
+  subLabel: string
+  questionText: string
+  answerSchemeText: string
+  marks: number
+  responseType: "instruction" | "short_text" | "structured_text" | "table" | "drawing" | "design" | "calculation" | "provided_space"
+  mainConstruct: string
+  constructCode: string
+  difficultyLevel: "rendah" | "sederhana" | "tinggi"
+  imageRefs: string[]
+}
+
 type ExtractedImage = {
   ref: string
   dataUrl: string
@@ -40,6 +59,7 @@ const supportedImageMimeTypes = ["image/png", "image/jpeg", "image/jpg", "image/
 
 export default function BulkImportPage() {
   const { profile } = useAuth()
+  const [paperType, setPaperType] = useState<"paper_1" | "paper_2">("paper_1")
   const [languageMode, setLanguageMode] = useState<"bm_only" | "bm_bi">("bm_only")
   const [sourceType, setSourceType] = useState("Import pukal")
   const [sourceYear, setSourceYear] = useState(new Date().getFullYear())
@@ -128,6 +148,7 @@ export default function BulkImportPage() {
         setMessage(`AI memproses batch ${batchIndex + 1}/${batches.length}... Anggaran soalan dikesan: ${estimatedItems}`)
         const { data, error } = await supabase.functions.invoke("parse-bulk-items", {
           body: {
+            paperType,
             languageMode,
             rawText: batches[batchIndex],
             batchIndex,
@@ -152,7 +173,9 @@ export default function BulkImportPage() {
       setDraftItems(
         allItems.map((item: any, index: number) => ({
         id: crypto.randomUUID(),
+        paper: paperType,
         questionNo: item.questionNo || String(index + 1),
+        section: paperType === "paper_2" ? normalizeSection(item.section) : "",
         stem: item.stem || "",
         options: {
           A: item.options?.A || "",
@@ -161,6 +184,12 @@ export default function BulkImportPage() {
           D: item.options?.D || "",
         },
         answer: item.answer || "",
+        marks: paperType === "paper_2" ? normalizeMarks(item.marks, 5) : 1,
+        itemType: paperType === "paper_2" ? "structured" : "mcq",
+        subQuestions:
+          paperType === "paper_2"
+            ? normalizeSubQuestions(item.subQuestions, item.metadata)
+            : [],
         imageRefs: Array.isArray(item.imageRefs) ? filterSupportedImageRefs(item.imageRefs, extractedImages) : [],
         ...mapMetadata(item.metadata),
         selected: true,
@@ -192,6 +221,21 @@ export default function BulkImportPage() {
     )
   }
 
+  function updateSubQuestion(itemId: string, subId: string, patch: Partial<DraftSubQuestion>) {
+    setDraftItems((prev) =>
+      prev.map((item) =>
+        item.id === itemId
+          ? {
+              ...item,
+              subQuestions: item.subQuestions.map((sub) =>
+                sub.id === subId ? { ...sub, ...patch } : sub,
+              ),
+            }
+          : item,
+      ),
+    )
+  }
+
   function removeDraft(id: string) {
     setDraftItems((prev) => prev.filter((item) => item.id !== id))
   }
@@ -210,14 +254,21 @@ export default function BulkImportPage() {
       return
     }
 
-    const invalid = selected.find(
-      (item) =>
-        !item.stem.trim() ||
-        optionLabels.some((label) => !item.options[label].trim()) ||
-        !item.answer,
-    )
+    const invalid = selected.find((item) => {
+      if (!item.stem.trim()) return true
+      if (item.paper === "paper_1") {
+        return optionLabels.some((label) => !item.options[label].trim()) || !item.answer
+      }
+
+      const markedSubQuestions = item.subQuestions.filter((sub) => sub.responseType !== "instruction" && sub.marks > 0)
+      return !item.section || markedSubQuestions.length === 0
+    })
     if (invalid) {
-      setMessage(`Sila lengkapkan stem, pilihan A-D dan jawapan betul untuk item ${invalid.questionNo || ""}.`)
+      setMessage(
+        invalid.paper === "paper_1"
+          ? `Sila lengkapkan stem, pilihan A-D dan jawapan betul untuk item ${invalid.questionNo || ""}.`
+          : `Sila lengkapkan bahagian dan sekurang-kurangnya satu sub-soalan bermarkah untuk item ${invalid.questionNo || ""}.`,
+      )
       return
     }
 
@@ -226,7 +277,7 @@ export default function BulkImportPage() {
     try {
       let imported = 0
       for (const item of selected) {
-        const itemCode = generateItemCode(item.tingkatan)
+        const itemCode = generateItemCode(item.tingkatan, item.paper, item.section)
         const imageUrlByRef = await uploadImagesForItem(item, itemCode, profile.id, extractedImages)
         const { data: insertedItem, error: itemError } = await supabase
           .from("items")
@@ -235,23 +286,26 @@ export default function BulkImportPage() {
             created_by: profile.id,
             updated_by: profile.id,
             tingkatan: item.tingkatan,
-            paper: "paper_1",
-            section: null,
+            paper: item.paper,
+            section: item.paper === "paper_2" ? item.section || null : null,
             question_no_reference: item.questionNo || null,
-            item_type: "mcq",
+            item_type: item.itemType,
             theme_name: item.themeName || null,
             bidang_learning_code: item.bidangCode || null,
             bidang_learning_name: item.bidangName || null,
             standard_kandungan: item.standardKandungan || null,
             standard_pembelajaran: item.standardPembelajaran || null,
-            main_construct: item.mainConstruct || "Mengingat",
-            construct_code: item.constructCode || null,
-            difficulty_level: item.difficultyLevel || "sederhana",
-            marks: 1,
-            stimulus_type: item.imageRefs.length > 0 ? "image" : "text",
+            main_construct: getPrimaryConstruct(item),
+            construct_code: getPrimaryConstructCode(item),
+            difficulty_level: getPrimaryDifficulty(item),
+            marks: item.paper === "paper_2" ? getTotalMarks(item) : 1,
+            stimulus_type: collectImageRefs(item).length > 0 ? "image" : "text",
             stem_text: toHtmlWithImages(item.stem, imageUrlByRef),
-            answer_scheme_text: `Jawapan: ${item.answer}`,
-            answer_final: item.answer,
+            answer_scheme_text:
+              item.paper === "paper_2"
+                ? generatePaper2MarkingSchemeHtml(item)
+                : `Jawapan: ${item.answer}`,
+            answer_final: item.paper === "paper_1" ? item.answer : null,
             source_type: sourceType.trim() || "Import pukal",
             source_year: sourceYear || null,
             status: "draft",
@@ -261,16 +315,40 @@ export default function BulkImportPage() {
 
         if (itemError) throw itemError
 
-        const optionRows = optionLabels.map((label, index) => ({
-          item_id: insertedItem.id,
-          option_label: label,
-          option_text: toParagraphHtml(item.options[label]),
-          is_correct: item.answer === label,
-          display_order: index + 1,
-        }))
+        if (item.paper === "paper_1") {
+          const optionRows = optionLabels.map((label, index) => ({
+            item_id: insertedItem.id,
+            option_label: label,
+            option_text: toParagraphHtml(item.options[label]),
+            is_correct: item.answer === label,
+            display_order: index + 1,
+          }))
 
-        const { error: optionError } = await supabase.from("item_options").insert(optionRows)
-        if (optionError) throw optionError
+          const { error: optionError } = await supabase.from("item_options").insert(optionRows)
+          if (optionError) throw optionError
+        }
+
+        if (item.paper === "paper_2") {
+          const subRows = item.subQuestions.map((sub, index) => {
+            const isInstruction = sub.responseType === "instruction" || Number(sub.marks) <= 0
+            return {
+              item_id: insertedItem.id,
+              label: sub.label || "a",
+              sub_label: sub.subLabel || null,
+              question_text: toHtmlWithImages(sub.questionText, imageUrlByRef),
+              answer_scheme_text: isInstruction ? "-" : sub.answerSchemeText.trim() || "-",
+              marks: isInstruction ? 0 : normalizeMarks(sub.marks, 1),
+              response_type: sub.responseType,
+              main_construct: isInstruction ? null : sub.mainConstruct || item.mainConstruct || null,
+              construct_code: isInstruction ? null : sub.constructCode || item.constructCode || null,
+              difficulty_level: isInstruction ? null : sub.difficultyLevel || item.difficultyLevel || "sederhana",
+              display_order: index + 1,
+            }
+          })
+
+          const { error: subError } = await supabase.from("item_subquestions").insert(subRows)
+          if (subError) throw subError
+        }
         imported += 1
       }
 
@@ -290,7 +368,7 @@ export default function BulkImportPage() {
         <div>
           <h1 className="page-title">Import Pukal AI</h1>
           <p className="page-subtitle">
-            Kertas 1: upload atau paste teks, AI pecahkan item dan cadangkan metadata sebelum import sebagai draft.
+              Upload atau paste teks, AI pecahkan item Kertas 1 / Kertas 2 dan cadangkan metadata sebelum import sebagai draft.
           </p>
         </div>
       </div>
@@ -305,6 +383,19 @@ export default function BulkImportPage() {
           </div>
 
           <div className="bulk-source-row">
+            <Field label="Jenis import">
+              <select
+                className="input"
+                value={paperType}
+                onChange={(event) => {
+                  setPaperType(event.target.value as "paper_1" | "paper_2")
+                  setDraftItems([])
+                }}
+              >
+                <option value="paper_1">Kertas 1 Objektif</option>
+                <option value="paper_2">Kertas 2 Subjektif</option>
+              </select>
+            </Field>
             <Field label="Sumber">
               <input className="input" value={sourceType} onChange={(event) => setSourceType(event.target.value)} />
             </Field>
@@ -413,20 +504,46 @@ export default function BulkImportPage() {
                         onChange={(event) => updateDraft(item.id, { questionNo: event.target.value })}
                       />
                     </Field>
-                    <Field label="Jawapan Betul">
-                      <select
-                        className="input"
-                        value={item.answer}
-                        onChange={(event) => updateDraft(item.id, { answer: event.target.value as DraftItem["answer"] })}
-                      >
-                        <option value="">Pilih jawapan</option>
-                        {optionLabels.map((label) => (
-                          <option key={label} value={label}>
-                            {label}
-                          </option>
-                        ))}
-                      </select>
-                    </Field>
+                    {item.paper === "paper_1" ? (
+                      <Field label="Jawapan Betul">
+                        <select
+                          className="input"
+                          value={item.answer}
+                          onChange={(event) => updateDraft(item.id, { answer: event.target.value as DraftItem["answer"] })}
+                        >
+                          <option value="">Pilih jawapan</option>
+                          {optionLabels.map((label) => (
+                            <option key={label} value={label}>
+                              {label}
+                            </option>
+                          ))}
+                        </select>
+                      </Field>
+                    ) : (
+                      <>
+                        <Field label="Bahagian">
+                          <select
+                            className="input"
+                            value={item.section}
+                            onChange={(event) => updateDraft(item.id, { section: normalizeSection(event.target.value) })}
+                          >
+                            <option value="">Pilih bahagian</option>
+                            <option value="A">Bahagian A</option>
+                            <option value="B">Bahagian B</option>
+                            <option value="C">Bahagian C</option>
+                          </select>
+                        </Field>
+                        <Field label="Jumlah Markah">
+                          <input
+                            className="input"
+                            type="number"
+                            min={1}
+                            value={item.marks}
+                            onChange={(event) => updateDraft(item.id, { marks: normalizeMarks(event.target.value, 5) })}
+                          />
+                        </Field>
+                      </>
+                    )}
                   </div>
 
                   <Field label="Stem Soalan">
@@ -455,17 +572,95 @@ export default function BulkImportPage() {
                     </Field>
                   )}
 
-                  <div className="bulk-options-grid">
-                    {optionLabels.map((label) => (
-                      <Field key={label} label={`Pilihan ${label}`}>
-                        <textarea
-                          className="input"
-                          value={item.options[label]}
-                          onChange={(event) => updateOption(item.id, label, event.target.value)}
-                        />
-                      </Field>
-                    ))}
-                  </div>
+                  {item.paper === "paper_1" ? (
+                    <div className="bulk-options-grid">
+                      {optionLabels.map((label) => (
+                        <Field key={label} label={`Pilihan ${label}`}>
+                          <textarea
+                            className="input"
+                            value={item.options[label]}
+                            onChange={(event) => updateOption(item.id, label, event.target.value)}
+                          />
+                        </Field>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="bulk-subquestion-list">
+                      {item.subQuestions.map((sub) => (
+                        <div key={sub.id} className="bulk-subquestion-card">
+                          <div className="form-grid form-grid-4">
+                            <Field label="Label">
+                              <input
+                                className="input"
+                                value={sub.label}
+                                onChange={(event) => updateSubQuestion(item.id, sub.id, { label: event.target.value })}
+                              />
+                            </Field>
+                            <Field label="Sub-label">
+                              <input
+                                className="input"
+                                value={sub.subLabel}
+                                onChange={(event) => updateSubQuestion(item.id, sub.id, { subLabel: event.target.value })}
+                              />
+                            </Field>
+                            <Field label="Markah">
+                              <input
+                                className="input"
+                                type="number"
+                                min={0}
+                                value={sub.marks}
+                                onChange={(event) =>
+                                  updateSubQuestion(item.id, sub.id, { marks: normalizeMarks(event.target.value, 0) })
+                                }
+                              />
+                            </Field>
+                            <Field label="Jenis Respons">
+                              <select
+                                className="input"
+                                value={sub.responseType}
+                                onChange={(event) =>
+                                  updateSubQuestion(item.id, sub.id, {
+                                    responseType: event.target.value as DraftSubQuestion["responseType"],
+                                  })
+                                }
+                              >
+                                <option value="instruction">Arahan sahaja</option>
+                                <option value="short_text">Jawapan ringkas</option>
+                                <option value="structured_text">Jawapan berstruktur</option>
+                                <option value="provided_space">Ruang jawapan telah disediakan</option>
+                                <option value="table">Jadual</option>
+                                <option value="calculation">Pengiraan</option>
+                                <option value="drawing">Lukisan / rajah</option>
+                                <option value="design">Reka bentuk</option>
+                              </select>
+                            </Field>
+                          </div>
+
+                          <Field label={`Teks sub-soalan ${formatSubLabel(sub)}`}>
+                            <textarea
+                              className="input textarea-md"
+                              value={sub.questionText}
+                              onChange={(event) =>
+                                updateSubQuestion(item.id, sub.id, { questionText: event.target.value })
+                              }
+                            />
+                          </Field>
+
+                          {sub.responseType !== "instruction" && (
+                            <Field label="Cadangan jawapan / skema">
+                              <textarea
+                                className="input"
+                                value={sub.answerSchemeText}
+                                onChange={(event) =>
+                                  updateSubQuestion(item.id, sub.id, { answerSchemeText: event.target.value })
+                                }
+                              />
+                            </Field>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </article>
               ))}
             </div>
@@ -485,9 +680,10 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   )
 }
 
-function generateItemCode(tingkatan: 4 | 5) {
+function generateItemCode(tingkatan: 4 | 5, paper: "paper_1" | "paper_2" = "paper_1", section: DraftItem["section"] = "") {
   const random = Math.random().toString(36).slice(2, 7).toUpperCase()
-  return `SCI-K1-T${tingkatan}-AI${random}`
+  const paperCode = paper === "paper_2" ? `K2${section || ""}` : "K1"
+  return `SCI-${paperCode}-T${tingkatan}-AI${random}`
 }
 
 function countDetectedQuestions(text: string) {
@@ -619,6 +815,148 @@ function mapMetadata(metadata: any): Pick<
 
 function normalizeDifficulty(value: unknown): DraftItem["difficultyLevel"] {
   return value === "rendah" || value === "tinggi" || value === "sederhana" ? value : "sederhana"
+}
+
+function normalizeSection(value: unknown): DraftItem["section"] {
+  const section = String(value || "").trim().toUpperCase()
+  return section === "A" || section === "B" || section === "C" ? section : ""
+}
+
+function normalizeMarks(value: unknown, fallback: number) {
+  const marks = Number(value)
+  if (!Number.isFinite(marks)) return fallback
+  return Math.max(0, Math.round(marks))
+}
+
+function normalizeResponseType(value: unknown): DraftSubQuestion["responseType"] {
+  const responseType = String(value || "").trim()
+  const allowed: DraftSubQuestion["responseType"][] = [
+    "instruction",
+    "short_text",
+    "structured_text",
+    "table",
+    "drawing",
+    "design",
+    "calculation",
+    "provided_space",
+  ]
+  return allowed.includes(responseType as DraftSubQuestion["responseType"])
+    ? (responseType as DraftSubQuestion["responseType"])
+    : "short_text"
+}
+
+function normalizeSubQuestions(subQuestions: unknown, metadata: any): DraftSubQuestion[] {
+  const rows = Array.isArray(subQuestions) ? subQuestions : []
+  const normalized = rows
+    .map((row: any, index) => {
+      const responseType = normalizeResponseType(row?.responseType || row?.response_type)
+      const marks = responseType === "instruction" ? 0 : normalizeMarks(row?.marks, 1)
+
+      return {
+        id: crypto.randomUUID(),
+        label: String(row?.label || defaultSubQuestionLabel(index)).trim().toLowerCase(),
+        subLabel: String(row?.subLabel || row?.sub_label || "").trim().toLowerCase(),
+        questionText: String(row?.questionText || row?.question_text || "").trim(),
+        answerSchemeText: String(row?.answerSchemeText || row?.answer_scheme_text || "").trim(),
+        marks,
+        responseType: marks === 0 ? "instruction" : responseType,
+        mainConstruct: String(row?.mainConstruct || metadata?.main_construct || "").trim(),
+        constructCode: String(row?.constructCode || metadata?.construct_code || "").trim(),
+        difficultyLevel: normalizeDifficulty(row?.difficultyLevel || row?.difficulty_level || metadata?.difficulty_level),
+        imageRefs: Array.isArray(row?.imageRefs)
+          ? row.imageRefs.map((ref: unknown) => String(ref || "").replace(/[\[\]]/g, "").trim()).filter(Boolean)
+          : [],
+      }
+    })
+    .filter((row) => row.questionText)
+
+  return normalized.length > 0
+    ? normalized
+    : [
+        {
+          id: crypto.randomUUID(),
+          label: "a",
+          subLabel: "",
+          questionText: "",
+          answerSchemeText: "",
+          marks: 1,
+          responseType: "short_text",
+          mainConstruct: String(metadata?.main_construct || "").trim(),
+          constructCode: String(metadata?.construct_code || "").trim(),
+          difficultyLevel: normalizeDifficulty(metadata?.difficulty_level),
+          imageRefs: [],
+        },
+      ]
+}
+
+function defaultSubQuestionLabel(index: number) {
+  return String.fromCharCode("a".charCodeAt(0) + index)
+}
+
+function formatSubLabel(sub: DraftSubQuestion) {
+  return `(${sub.label})${sub.subLabel ? `(${sub.subLabel})` : ""}`
+}
+
+function collectImageRefs(item: DraftItem) {
+  return Array.from(
+    new Set([
+      ...item.imageRefs,
+      ...item.subQuestions.flatMap((sub) => sub.imageRefs),
+    ].map((ref) => ref.replace(/[\[\]]/g, "").trim()).filter(Boolean)),
+  )
+}
+
+function getTotalMarks(item: DraftItem) {
+  const subTotal = item.subQuestions.reduce(
+    (sum, sub) => sum + (sub.responseType === "instruction" ? 0 : normalizeMarks(sub.marks, 0)),
+    0,
+  )
+  return subTotal || normalizeMarks(item.marks, 5)
+}
+
+function getPrimarySubQuestion(item: DraftItem) {
+  return item.subQuestions.find((sub) => sub.responseType !== "instruction" && sub.marks > 0)
+}
+
+function getPrimaryConstruct(item: DraftItem) {
+  return getPrimarySubQuestion(item)?.mainConstruct || item.mainConstruct || "Mengingat"
+}
+
+function getPrimaryConstructCode(item: DraftItem) {
+  return getPrimarySubQuestion(item)?.constructCode || item.constructCode || null
+}
+
+function getPrimaryDifficulty(item: DraftItem) {
+  return getPrimarySubQuestion(item)?.difficultyLevel || item.difficultyLevel || "sederhana"
+}
+
+function generatePaper2MarkingSchemeHtml(item: DraftItem) {
+  const rows = item.subQuestions.filter((sub) => sub.responseType !== "instruction" && sub.marks > 0)
+  if (rows.length === 0) return "<p>-</p>"
+
+  const body = rows
+    .map(
+      (sub) => `
+        <tr>
+          <td>${escapeHtml(formatSubLabel(sub))}</td>
+          <td>${escapeHtml(sub.answerSchemeText || "-").replace(/\n/g, "<br />")}</td>
+          <td>${normalizeMarks(sub.marks, 1)}</td>
+        </tr>
+      `,
+    )
+    .join("")
+
+  return `
+    <table>
+      <thead>
+        <tr><th>Nombor Soalan</th><th>Cadangan Jawapan</th><th>Markah</th></tr>
+      </thead>
+      <tbody>
+        ${body}
+        <tr><td colspan="2"><strong>Jumlah</strong></td><td><strong>${getTotalMarks(item)}</strong></td></tr>
+      </tbody>
+    </table>
+  `
 }
 
 function cleanExtractedText(text: string) {
@@ -782,7 +1120,7 @@ async function uploadImagesForItem(
   extractedImages: ExtractedImage[],
 ) {
   const imageUrlByRef = new Map<string, string>()
-  const refs = Array.from(new Set(item.imageRefs.map((ref) => ref.replace(/[\[\]]/g, "").trim())))
+  const refs = collectImageRefs(item)
 
   for (const ref of refs) {
     const image = extractedImages.find((entry) => entry.ref.toLowerCase() === ref.toLowerCase())

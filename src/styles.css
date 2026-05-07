@@ -1389,6 +1389,19 @@ th, td { padding: 12px; border-bottom: 1px solid #e2e8f0; text-align: left; }
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.bulk-subquestion-list {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.bulk-subquestion-card {
+  background: #f8fafc;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px;
+}
+
 .builder-floating-message {
   bottom: 18px;
   left: 50%;
