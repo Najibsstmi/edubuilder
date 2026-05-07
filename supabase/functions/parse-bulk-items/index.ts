@@ -73,6 +73,9 @@ Peraturan penting:
 - Jangan reka fakta baharu.
 - Jika ada nombor soalan, simpan dalam "questionNo".
 - Jika tetapan bahasa ialah "Bahasa Melayu sahaja", buang ayat terjemahan Bahasa Inggeris yang mengulangi maksud ayat Bahasa Melayu dalam stem dan pilihan jawapan.
+- Jika tetapan bahasa ialah "Bahasa Melayu sahaja", DILARANG memilih ayat arahan Bahasa Inggeris sebagai stem/pilihan. Pilih versi Bahasa Melayu yang berdekatan.
+- Contoh: jika ada "Berdasarkan Jadual 2..." dan "Based on Table 2...", gunakan hanya "Berdasarkan Jadual 2...".
+- Hanya kekalkan perkataan Inggeris jika ia label/istilah sains asal, unit, simbol, nama bahan, atau tiada versi Bahasa Melayu.
 - Jika tetapan bahasa ialah "Kekalkan Bahasa Melayu dan Bahasa Inggeris", kekalkan bilingual BM/BI dalam stem dan pilihan jawapan.
 - Jangan buang istilah, simbol, label rajah, unit, nama bahan atau perkataan Inggeris yang memang sebahagian kandungan sains.
 - Jika terdapat marker gambar seperti [IMAGE_1], [IMAGE_2], masukkan marker berkaitan dalam array "imageRefs".
@@ -124,6 +127,9 @@ Peraturan penting:
 - Jika skema tidak ada, cadangkan jawapan/skema terbaik secara ringkas.
 - Jumlah "marks" item utama mesti hampir sama dengan jumlah markah sub-soalan bermarkah.
 - Jika tetapan bahasa ialah "Bahasa Melayu sahaja", buang ayat terjemahan Bahasa Inggeris yang mengulangi maksud ayat Bahasa Melayu.
+- Jika tetapan bahasa ialah "Bahasa Melayu sahaja", DILARANG memilih ayat arahan Bahasa Inggeris sebagai questionText sub-soalan.
+- Contoh: jika ada "Berdasarkan Jadual 2..." dan "Based on Table 2...", gunakan hanya "Berdasarkan Jadual 2...".
+- Jika AI perlu menulis semula cadangan jawapan, tulis dalam Bahasa Melayu.
 - Jangan buang istilah, simbol, label rajah, unit, nama bahan atau perkataan Inggeris yang memang sebahagian kandungan sains.
 - Jika terdapat marker gambar seperti [IMAGE_1], masukkan marker berkaitan dalam "imageRefs" pada item atau sub-soalan yang paling hampir.
 - Tentukan tingkatan setiap item berdasarkan topik, istilah, DSKP dan konteks soalan.

@@ -140,9 +140,10 @@ export default function BulkImportPage() {
     setParsing(true)
 
     try {
-      const batches = splitQuestionBatches(rawText, 3)
+      const importText = languageMode === "bm_only" ? stripEnglishTranslationLines(rawText) : rawText
+      const batches = splitQuestionBatches(importText, 3)
       const allItems: any[] = []
-      const estimatedItems = countDetectedQuestions(rawText)
+      const estimatedItems = countDetectedQuestions(importText)
 
       for (let batchIndex = 0; batchIndex < batches.length; batchIndex += 1) {
         setMessage(`AI memproses batch ${batchIndex + 1}/${batches.length}... Anggaran soalan dikesan: ${estimatedItems}`)
@@ -711,6 +712,30 @@ function normalizeBulkText(text: string) {
     .replace(/(\[(?:IMAGE|Image|image)_\d+\])([^\n])/g, "$1\n$2")
     .replace(/\n{3,}/g, "\n\n")
     .trim()
+}
+
+function stripEnglishTranslationLines(text: string) {
+  return normalizeBulkText(text)
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line && !isLikelyEnglishTranslationLine(line))
+    .join("\n")
+}
+
+function isLikelyEnglishTranslationLine(line: string) {
+  const value = line.trim()
+  if (!value) return false
+  if (/^\[IMAGE_\d+\]$/i.test(value)) return false
+  if (/^[A-D][\).]?\s+/i.test(value)) return false
+
+  const lower = value.toLowerCase()
+  const englishStarts = /^(based on|state|name|which|what|why|how|explain|calculate|draw|predict|observe|give|mark|diagram|table|figure|a student|the diagram|the table|from the|using the|write|choose|select|identify|determine|compare|suggest)\b/
+  if (englishStarts.test(lower)) return true
+
+  const englishWords = lower.match(/\b(the|and|of|in|on|for|with|from|which|what|that|are|is|to|as|based|diagram|table|state|shows|given|following|answer|sample|water|polluted|types)\b/g) || []
+  const malayWords = lower.match(/\b(yang|dan|dalam|pada|bagi|untuk|dengan|daripada|rajah|jadual|nyatakan|apakah|manakah|berdasarkan|sampel|air|jenis|pencemaran)\b/g) || []
+
+  return englishWords.length >= 4 && englishWords.length > malayWords.length * 2
 }
 
 function splitQuestionBlocks(text: string) {
