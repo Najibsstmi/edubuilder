@@ -17,8 +17,17 @@ function getSignupErrorMessage(message = '') {
     return 'Email ini sudah berdaftar. Sila log masuk atau guna Lupa kata laluan.';
   }
 
-  if (normalized.includes('rate limit')) {
-    return 'Sistem daftar sedang menerima terlalu banyak permintaan serentak. Sila tunggu 2-5 minit dan cuba semula.';
+  if (
+    normalized.includes('rate limit') ||
+    normalized.includes('too many') ||
+    normalized.includes('over email send') ||
+    normalized.includes('email rate')
+  ) {
+    return 'Had pendaftaran/email Supabase sedang tinggi kerana ramai daftar serentak. Sila tunggu 2-5 minit dan cuba semula, atau hubungi master admin.';
+  }
+
+  if (normalized.includes('email not confirmed') || normalized.includes('not confirmed')) {
+    return 'Email ini sudah didaftarkan tetapi belum disahkan. Sila semak inbox/spam atau hubungi master admin.';
   }
 
   return message || 'Signup gagal. Sila semak maklumat dan cuba semula.';
@@ -89,6 +98,7 @@ export function SignupPage() {
       email,
       password,
       options: {
+        emailRedirectTo: `${window.location.origin}/login`,
         data: {
           full_name: fullName.trim(),
           school_id: selectedSchool.id,

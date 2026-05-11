@@ -5,6 +5,24 @@ import { BrandLogo } from '../components/BrandLogo';
 import { useAuth } from '../contexts/AuthContext';
 import { PremiumContactCard } from '../components/PremiumContactCard';
 
+function getLoginErrorMessage(message = '') {
+  const normalized = message.toLowerCase();
+
+  if (normalized.includes('email not confirmed') || normalized.includes('not confirmed')) {
+    return 'Email belum disahkan di Supabase Auth. Semak inbox/spam untuk pautan pengesahan atau hubungi master admin.';
+  }
+
+  if (
+    normalized.includes('invalid login') ||
+    normalized.includes('invalid email') ||
+    normalized.includes('invalid credentials')
+  ) {
+    return 'Email atau kata laluan tidak tepat. Jika akaun baru didaftarkan, pastikan email sudah disahkan dahulu.';
+  }
+
+  return message || 'Login gagal. Sila cuba semula.';
+}
+
 export function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -24,7 +42,7 @@ export function LoginPage() {
     setLoading(false);
 
     if (signInError) {
-      setError(signInError.message);
+      setError(getLoginErrorMessage(signInError.message));
       return;
     }
 
