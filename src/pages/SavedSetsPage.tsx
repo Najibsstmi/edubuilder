@@ -231,12 +231,12 @@ export default function SavedSetsPage() {
 
       const doc = await buildWordDocx(selectedSet, selectedItems)
 
-      const buffer = await Packer.toBuffer(doc)
-      const blob = new Blob([new Uint8Array(buffer)], {
-        type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-      })
+      const blob = await Packer.toBlob(doc)
 
-      saveAs(blob, `${slugify(selectedSet.title)}.docx`)
+      saveAs(
+        blob,
+        `${slugify(selectedSet.title)}.docx`
+      )
 
       setMessage("Word berjaya dijana.")
     } catch (error: any) {
@@ -253,12 +253,12 @@ export default function SavedSetsPage() {
 
       const doc = await buildSchemeWordDocx(selectedSet, selectedItems)
 
-      const buffer = await Packer.toBuffer(doc)
-      const blob = new Blob([new Uint8Array(buffer)], {
-        type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-      })
+      const blob = await Packer.toBlob(doc)
 
-      saveAs(blob, `${slugify(selectedSet.title)}-skema.docx`)
+      saveAs(
+        blob,
+        `${slugify(selectedSet.title)}-skema.docx`
+      )
 
       setMessage("Word skema berjaya dijana.")
     } catch (error: any) {
