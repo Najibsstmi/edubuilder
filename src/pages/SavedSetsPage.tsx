@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
 import { useAuth } from "../contexts/AuthContext"
 import { supabase } from "../lib/supabase"
-import { Document, Packer, Paragraph, TextRun, Table, TableCell, TableRow, ImageRun, AlignmentType, HeadingLevel, WidthType, VerticalAlign } from "docx"
 // @ts-ignore
 import { saveAs } from "file-saver"
 
@@ -229,18 +228,16 @@ export default function SavedSetsPage() {
     try {
       setMessage("Menjana fail Word...")
 
-      const doc = await buildWordDocx(selectedSet, selectedItems)
+      const html = buildWordHtml(selectedSet, selectedItems)
+      const blob = new Blob([html], {
+        type: "application/msword;charset=utf-8",
+      })
 
-      const blob = await Packer.toBlob(doc)
-
-      saveAs(
-        blob,
-        `${slugify(selectedSet.title)}.docx`
-      )
+      saveAs(blob, `${slugify(selectedSet.title)}.doc`)
 
       setMessage("Word berjaya dijana.")
     } catch (error: any) {
-      console.error(error)
+      console.error("Word export error", error)
       setMessage("Gagal jana Word.")
     }
   }
@@ -251,20 +248,256 @@ export default function SavedSetsPage() {
     try {
       setMessage("Menjana fail Word skema...")
 
-      const doc = await buildSchemeWordDocx(selectedSet, selectedItems)
+      const html = buildSchemeWordHtml(selectedSet, selectedItems)
+      const blob = new Blob([html], {
+        type: "application/msword;charset=utf-8",
+      })
 
-      const blob = await Packer.toBlob(doc)
-
-      saveAs(
-        blob,
-        `${slugify(selectedSet.title)}-skema.docx`
-      )
+      saveAs(blob, `${slugify(selectedSet.title)}-skema.doc`)
 
       setMessage("Word skema berjaya dijana.")
     } catch (error: any) {
-      console.error(error)
+      console.error("Word scheme export error", error)
       setMessage("Gagal jana Word skema.")
     }
+  }
+
+  function buildWordHtml(set: SavedSet, items: NormalizedSetItem[]) {
+    const questionHtml = items
+      .map((row, index) => {
+        if (!row.item) return ""
+
+        const stemHtml = row.item.stem_text || ""
+        let contentHtml = `<div class="question-stem">${stemHtml}</div>`
+
+        if (set.paper === "paper_1" && row.item.item_options?.length) {
+          const optionsHtml = sortOptions(row.item.item_options)
+            .map((option) => {
+              const contentHtml = option.option_text || ""
+              const imageHtml = option.option_image_url
+                ? `<img src="${escapeHtml(option.option_image_url)}" alt="Pilihan ${escapeHtml(option.option_label)}" />`
+                : ""
+
+              return `
+                <div class="question-option">
+                  <div class="option-label">${escapeHtml(option.option_label)}.</div>
+                  <div class="option-content">${contentHtml}${imageHtml}</div>
+                </div>
+              `
+            })
+            .join("")
+
+          contentHtml += `
+            <div class="question-options">
+              ${optionsHtml}
+            </div>
+          `
+        }
+
+        if (set.paper === "paper_2" && row.item.item_subquestions?.length) {
+          const subHtml = sortSubQuestions(row.item.item_subquestions)
+            .map((sub) => {
+              const label = `(${escapeHtml(sub.label)})${sub.sub_label ? `(${escapeHtml(sub.sub_label)})` : ""}`
+              const questionText = sub.question_text || ""
+              const lineCount = Math.max(1, sub.marks || 1)
+              const answerLines = Array.from({ length: lineCount }).map(() => '<div class="answer-line"></div>').join('')
+
+              return `
+                <table class="subquestion-table">
+                  <tr>
+                    <td class="sub-label">${label}</td>
+                    <td class="sub-content">
+                      <div class="sub-text">${questionText}</div>
+                      <div class="answer-lines">${answerLines}</div>
+                      <div class="sub-marks">[${sub.marks} markah]</div>
+                    </td>
+                  </tr>
+                </table>
+              `
+            })
+            .join("")
+
+          contentHtml += subHtml
+        }
+
+        return `
+          <table class="question-row-table">
+            <tr>
+              <td class="question-no">${index + 1}.</td>
+              <td class="question-content">${contentHtml}</td>
+            </tr>
+          </table>
+        `
+      })
+      .join("")
+
+    return `
+      <!doctype html>
+      <html>
+        <head>
+          <meta charset="utf-8" />
+          <title>${escapeHtml(set.title || "Set Soalan")}</title>
+          <style>
+            body { font-family: Arial, sans-serif; color: #111; margin: 20px; }
+            .document { max-width: 900px; margin: auto; }
+            .doc-head { text-align: center; margin-bottom: 24px; }
+            .doc-head h1 { margin: 0 0 8px; font-size: 24px; }
+            .doc-head .meta { margin: 4px 0; }
+            .question-row-table {
+              width: 100%;
+              border-collapse: collapse;
+              margin-bottom: 14pt;
+            }
+            .question-row-table td {
+              border: none;
+              vertical-align: top;
+            }
+            .question-no {
+              width: 24pt;
+              padding-right: 6pt;
+              font-weight: normal;
+            }
+            .question-content {
+              width: auto;
+            }
+            .question-stem { margin: 8px 0; }
+            .question-options { margin-top: 10px; padding-left: 18px; }
+            .question-option { margin-bottom: 8px; }
+            .option-label { font-weight: bold; display: inline-block; width: 24px; }
+            .option-content { display: inline-block; vertical-align: top; max-width: 850px; }
+            .subquestion-table {
+              width: 100%;
+              border-collapse: collapse;
+              margin-top: 10pt;
+            }
+            .subquestion-table td {
+              border: none;
+              vertical-align: top;
+            }
+            .sub-label {
+              width: 42pt;
+              font-weight: bold;
+            }
+            .sub-content {
+              width: auto;
+            }
+            .sub-text { margin: 6px 0; }
+            .answer-lines {
+              margin-top: 8pt;
+            }
+            .answer-line {
+              border-bottom: 1px solid #000;
+              height: 14pt;
+              margin-bottom: 4pt;
+            }
+            .sub-marks {
+              text-align: right;
+              font-weight: bold;
+              margin-top: 2pt;
+            }
+            img {
+              max-width: 10.5cm !important;
+              height: auto !important;
+              display: block;
+              margin: 6pt auto;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="document">
+            <div class="doc-head">
+              <h1>${escapeHtml(set.title || "Latihan Sains")}</h1>
+              <div class="meta">Sains KSSM</div>
+              <div class="meta">${set.tingkatan ? `Tingkatan ${set.tingkatan}` : "Tingkatan 4 dan 5"}</div>
+            </div>
+            ${questionHtml}
+          </div>
+        </body>
+      </html>
+    `
+  }
+
+  function buildSchemeWordHtml(set: SavedSet, items: NormalizedSetItem[]) {
+    const schemeHtml = items
+      .map((row) => {
+        if (!row.item) return ""
+
+        if (set.paper === "paper_2") {
+          const rows = sortSubQuestions(row.item.item_subquestions)
+            .map((sub) => `
+              <tr>
+                <td>${escapeHtml(`(${sub.label})${sub.sub_label ? `(${sub.sub_label})` : ""}`)}</td>
+                <td>${sub.answer_scheme_text || "-"}</td>
+                <td>${sub.marks}</td>
+              </tr>
+            `)
+            .join("")
+
+          return `
+            <div class="scheme-item">
+              <h2>Soalan ${escapeHtml(row.custom_question_no)}</h2>
+              <table class="scheme-table">
+                <thead>
+                  <tr>
+                    <th>Sub-soalan</th>
+                    <th>Cadangan Jawapan</th>
+                    <th>Markah</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${rows}
+                  <tr>
+                    <td><strong>Jumlah</strong></td>
+                    <td></td>
+                    <td><strong>${sortSubQuestions(row.item.item_subquestions).reduce((sum, sub) => sum + (sub.marks || 0), 0) || row.marks}</strong></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          `
+        }
+
+        return `
+          <div class="scheme-item">
+            <h2>Soalan ${escapeHtml(row.custom_question_no)}</h2>
+            <div class="scheme-answer">${row.item.answer_scheme_text || "-"}</div>
+          </div>
+        `
+      })
+      .join("")
+
+    return `
+      <!doctype html>
+      <html>
+        <head>
+          <meta charset="utf-8" />
+          <title>${escapeHtml(set.title || "Skema")}</title>
+          <style>
+            body { font-family: Arial, sans-serif; color: #111; margin: 20px; }
+            .document { max-width: 900px; margin: auto; }
+            .doc-head { text-align: center; margin-bottom: 24px; }
+            .doc-head h1 { margin: 0 0 8px; font-size: 24px; }
+            .scheme-item { margin-bottom: 24px; }
+            .scheme-item h2 { margin-bottom: 12px; }
+            .scheme-answer { white-space: pre-wrap; margin-top: 8px; }
+            .scheme-table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+            .scheme-table th, .scheme-table td { border: 1px solid #444; padding: 8px; vertical-align: top; }
+            .scheme-table th { background: #f5f5f5; }
+            img { max-width: 520px; height: auto; display: block; margin: 8px 0; }
+          </style>
+        </head>
+        <body>
+          <div class="document">
+            <div class="doc-head">
+              <h1>Panduan Pemarkahan</h1>
+              <div class="meta">${escapeHtml(set.title || "Set Soalan")}</div>
+              <div class="meta">Sains KSSM</div>
+            </div>
+            ${schemeHtml}
+          </div>
+        </body>
+      </html>
+    `
   }
 
   function printPdf() {
@@ -755,420 +988,6 @@ function AnswerLines({ count }: { count: number }) {
       ))}
     </div>
   )
-}
-
-function blobToBase64(blob: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-
-    reader.onloadend = () => {
-      resolve(reader.result as string)
-    }
-
-    reader.onerror = reject
-
-    reader.readAsDataURL(blob)
-  })
-}
-
-async function fetchImageAsBase64(url: string): Promise<string | null> {
-  try {
-    const response = await fetch(url)
-    if (!response.ok) return null
-    const blob = await response.blob()
-    return await blobToBase64(blob)
-  } catch (error) {
-    console.warn("Failed to fetch image:", url, error)
-    return null
-  }
-}
-
-async function processTextWithImages(text: string): Promise<(TextRun | ImageRun)[]> {
-  if (!text) return [new TextRun("")]
-
-  const document = new DOMParser().parseFromString(text, "text/html")
-  const parts: (TextRun | ImageRun)[] = []
-
-  function appendTextRun(content: string, bold = false) {
-    if (!content) return
-    parts.push(new TextRun({ text: content, bold }))
-  }
-
-  function appendLineBreak() {
-    parts.push(new TextRun({ text: "\n" }))
-  }
-
-  async function walkNode(node: Node, bold = false): Promise<void> {
-    if (node.nodeType === Node.TEXT_NODE) {
-      const textContent = node.textContent || ""
-      if (textContent) appendTextRun(textContent, bold)
-      return
-    }
-
-    if (node.nodeType !== Node.ELEMENT_NODE) return
-
-    const element = node as HTMLElement
-    const tagName = element.tagName.toUpperCase()
-    const nextBold = bold || tagName === "STRONG" || tagName === "B"
-
-    if (tagName === "IMG") {
-      const imageUrl = element.getAttribute("src") || ""
-      if (!imageUrl) {
-        appendTextRun("[Gambar tidak dapat dimuat turun]")
-        return
-      }
-
-      const base64 = await fetchImageAsBase64(imageUrl)
-      if (base64) {
-        const base64Data = base64.split(",")[1]
-        const imageBuffer = Uint8Array.from(atob(base64Data), (c) => c.charCodeAt(0))
-
-        parts.push(
-          new ImageRun({
-            data: imageBuffer,
-            transformation: {
-              width: 400,
-              height: 300,
-            },
-            type: "png",
-          })
-        )
-      } else {
-        appendTextRun("[Gambar tidak dapat dimuat turun]")
-      }
-
-      return
-    }
-
-    if (tagName === "BR") {
-      appendLineBreak()
-      return
-    }
-
-    for (const child of Array.from(node.childNodes)) {
-      await walkNode(child, nextBold)
-    }
-
-    if (tagName === "P" || tagName === "DIV") {
-      appendLineBreak()
-    }
-  }
-
-  await walkNode(document.body)
-
-  if (parts.length === 0) {
-    return [new TextRun("")]
-  }
-
-  return parts
-}
-
-async function buildWordDocx(set: SavedSet, items: NormalizedSetItem[]): Promise<Document> {
-  const children: (Paragraph | Table)[] = []
-
-  // Header
-  children.push(
-    new Paragraph({
-      text: set.title || "Latihan Sains",
-      heading: HeadingLevel.TITLE,
-      alignment: AlignmentType.CENTER,
-    }),
-    new Paragraph({
-      text: "Sains KSSM",
-      alignment: AlignmentType.CENTER,
-    }),
-    new Paragraph({
-      text: set.tingkatan ? `Tingkatan ${set.tingkatan}` : "Tingkatan 4 dan 5",
-      alignment: AlignmentType.CENTER,
-    }),
-    new Paragraph({
-      text: "",
-    }) // Empty line
-  )
-
-  // Questions
-  for (let i = 0; i < items.length; i++) {
-    const row = items[i]
-    const questionNumber = `${i + 1}.`
-
-    if (row.item) {
-      // Question stem
-      const stemParts = await processTextWithImages(row.item.stem_text || "")
-      children.push(
-        new Paragraph({
-          children: [
-            new TextRun({
-              text: questionNumber,
-              bold: true,
-            }),
-            ...stemParts,
-          ],
-        })
-      )
-
-      if (set.paper === "paper_1" && row.item.item_options) {
-        // Options table
-        const sortedOptions = sortOptions(row.item.item_options)
-        const tableRows: TableRow[] = []
-
-        for (const option of sortedOptions) {
-          const optionParts = await processTextWithImages(option.option_text || "")
-
-          // Add image if exists
-          if (option.option_image_url) {
-            const base64 = await fetchImageAsBase64(option.option_image_url)
-            if (base64) {
-              const base64Data = base64.split(',')[1]
-              const imageBuffer = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0))
-
-              optionParts.push(
-                new ImageRun({
-                  data: imageBuffer,
-                  transformation: {
-                    width: 300,
-                    height: 200,
-                  },
-                  type: "png",
-                })
-              )
-            } else {
-              optionParts.push(new TextRun("[Gambar tidak dapat dimuat turun]"))
-            }
-          }
-
-          tableRows.push(
-            new TableRow({
-              children: [
-                new TableCell({
-                  children: [
-                    new Paragraph({
-                      children: [new TextRun({ text: `${option.option_label}.`, bold: true })],
-                    }),
-                  ],
-                  width: {
-                    size: 10,
-                    type: WidthType.PERCENTAGE,
-                  },
-                }),
-                new TableCell({
-                  children: [
-                    new Paragraph({
-                      children: optionParts,
-                    }),
-                  ],
-                  width: {
-                    size: 90,
-                    type: WidthType.PERCENTAGE,
-                  },
-                }),
-              ],
-            })
-          )
-        }
-
-        children.push(
-          new Table({
-            rows: tableRows,
-            width: {
-              size: 100,
-              type: WidthType.PERCENTAGE,
-            },
-          })
-        )
-      } else {
-        // Paper 2 - marks
-        children.push(
-          new Paragraph({
-            text: `[${row.marks} markah]`,
-            alignment: AlignmentType.RIGHT,
-          })
-        )
-      }
-
-      // Add spacing between questions
-      children.push(new Paragraph({ text: "" }))
-    }
-  }
-
-  return new Document({
-    sections: [
-      {
-        properties: {},
-        children: children,
-      },
-    ],
-  })
-}
-
-async function buildSchemeWordDocx(set: SavedSet, items: NormalizedSetItem[]): Promise<Document> {
-  const children: (Paragraph | Table)[] = []
-
-  // Header
-  children.push(
-    new Paragraph({
-      text: "Panduan Pemarkahan",
-      heading: HeadingLevel.TITLE,
-      alignment: AlignmentType.CENTER,
-    }),
-    new Paragraph({
-      text: set.title || "Set Soalan",
-      alignment: AlignmentType.CENTER,
-    }),
-    new Paragraph({
-      text: "Sains KSSM",
-      alignment: AlignmentType.CENTER,
-    }),
-    new Paragraph({
-      text: set.tingkatan ? `Tingkatan ${set.tingkatan}` : "Tingkatan 4 dan 5",
-      alignment: AlignmentType.CENTER,
-    }),
-    new Paragraph({
-      text: "",
-    }) // Empty line
-  )
-
-  // Questions
-  for (const row of items) {
-    if (!row.item) continue
-
-    const subs = sortSubQuestions(row.item.item_subquestions)
-    const total = subs.reduce((sum, sub) => sum + (sub.marks || 0), 0) || row.marks
-
-    // Question header
-    children.push(
-      new Paragraph({
-        text: `Soalan ${row.custom_question_no}`,
-        heading: HeadingLevel.HEADING_2,
-      })
-    )
-
-    if (set.paper === "paper_2") {
-      // Table for paper 2 with subquestions
-      const tableRows: TableRow[] = []
-
-      // Header row
-      tableRows.push(
-        new TableRow({
-          children: [
-            new TableCell({
-              children: [new Paragraph({ children: [new TextRun({ text: "Sub-soalan", bold: true })] })],
-              width: { size: 20, type: WidthType.PERCENTAGE },
-            }),
-            new TableCell({
-              children: [new Paragraph({ children: [new TextRun({ text: "Cadangan Jawapan", bold: true })] })],
-              width: { size: 65, type: WidthType.PERCENTAGE },
-            }),
-            new TableCell({
-              children: [new Paragraph({ children: [new TextRun({ text: "Markah", bold: true })] })],
-              width: { size: 15, type: WidthType.PERCENTAGE },
-            }),
-          ],
-        })
-      )
-
-      // Subquestion rows
-      for (const sub of subs) {
-        const subLabel = `(${sub.label})${sub.sub_label ? `(${sub.sub_label})` : ""}`
-
-        tableRows.push(
-          new TableRow({
-            children: [
-              new TableCell({
-                children: [new Paragraph({ text: subLabel })],
-              }),
-              new TableCell({
-                children: [
-                  new Paragraph({
-                    text: sub.answer_scheme_text || "-",
-                  }),
-                ],
-              }),
-              new TableCell({
-                children: [
-                  new Paragraph({
-                    text: sub.marks.toString(),
-                    alignment: AlignmentType.CENTER,
-                  }),
-                ],
-              }),
-            ],
-          })
-        )
-      }
-
-      // Total row
-      tableRows.push(
-        new TableRow({
-          children: [
-            new TableCell({
-              children: [new Paragraph({ children: [new TextRun({ text: "Jumlah", bold: true })] })],
-            }),
-            new TableCell({
-              children: [new Paragraph({ text: "" })],
-            }),
-            new TableCell({
-              children: [
-                new Paragraph({
-                  children: [new TextRun({ text: total.toString(), bold: true })],
-                  alignment: AlignmentType.CENTER,
-                }),
-              ],
-            }),
-          ],
-        })
-      )
-
-      children.push(
-        new Table({
-          rows: tableRows,
-          width: {
-            size: 100,
-            type: WidthType.PERCENTAGE,
-          },
-        })
-      )
-    } else {
-      // Simple table for paper 1
-      children.push(
-        new Table({
-          rows: [
-            new TableRow({
-              children: [
-                new TableCell({
-                  children: [new Paragraph({ children: [new TextRun({ text: "Jawapan", bold: true })] })],
-                  width: { size: 30, type: WidthType.PERCENTAGE },
-                }),
-                new TableCell({
-                  children: [
-                    new Paragraph({
-                      text: row.item.answer_scheme_text || "-",
-                    }),
-                  ],
-                  width: { size: 70, type: WidthType.PERCENTAGE },
-                }),
-              ],
-            }),
-          ],
-          width: {
-            size: 100,
-            type: WidthType.PERCENTAGE,
-          },
-        })
-      )
-    }
-
-    // Add spacing between questions
-    children.push(new Paragraph({ text: "" }))
-  }
-
-  return new Document({
-    sections: [
-      {
-        properties: {},
-        children: children,
-      },
-    ],
-  })
 }
 
 function slugify(text: string) {
