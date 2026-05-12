@@ -784,48 +784,80 @@ async function fetchImageAsBase64(url: string): Promise<string | null> {
 }
 
 async function processTextWithImages(text: string): Promise<(TextRun | ImageRun)[]> {
-  if (!text) return [new TextRun(text)]
+  if (!text) return [new TextRun("")]
 
-  // Simple regex to find image URLs in text (assuming they're in <img> tags or direct URLs)
-  const imgRegex = /<img[^>]+src=["']([^"']+)["'][^>]*>/g
+  const document = new DOMParser().parseFromString(text, "text/html")
   const parts: (TextRun | ImageRun)[] = []
-  let lastIndex = 0
-  let match
 
-  while ((match = imgRegex.exec(text)) !== null) {
-    // Add text before image
-    if (match.index > lastIndex) {
-      parts.push(new TextRun(text.slice(lastIndex, match.index)))
-    }
-
-    // Add image
-    const imageUrl = match[1]
-    const base64 = await fetchImageAsBase64(imageUrl)
-    if (base64) {
-      // Extract base64 data
-      const base64Data = base64.split(',')[1]
-      const imageBuffer = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0))
-
-      parts.push(
-        new ImageRun({
-          data: imageBuffer,
-          transformation: {
-            width: 400,
-            height: 300,
-          },
-          type: "png",
-        })
-      )
-    } else {
-      parts.push(new TextRun("[Gambar tidak dapat dimuat turun]"))
-    }
-
-    lastIndex = match.index + match[0].length
+  function appendTextRun(content: string, bold = false) {
+    if (!content) return
+    parts.push(new TextRun({ text: content, bold }))
   }
 
-  // Add remaining text
-  if (lastIndex < text.length) {
-    parts.push(new TextRun(text.slice(lastIndex)))
+  function appendLineBreak() {
+    parts.push(new TextRun({ text: "\n" }))
+  }
+
+  async function walkNode(node: Node, bold = false): Promise<void> {
+    if (node.nodeType === Node.TEXT_NODE) {
+      const textContent = node.textContent || ""
+      if (textContent) appendTextRun(textContent, bold)
+      return
+    }
+
+    if (node.nodeType !== Node.ELEMENT_NODE) return
+
+    const element = node as HTMLElement
+    const tagName = element.tagName.toUpperCase()
+    const nextBold = bold || tagName === "STRONG" || tagName === "B"
+
+    if (tagName === "IMG") {
+      const imageUrl = element.getAttribute("src") || ""
+      if (!imageUrl) {
+        appendTextRun("[Gambar tidak dapat dimuat turun]")
+        return
+      }
+
+      const base64 = await fetchImageAsBase64(imageUrl)
+      if (base64) {
+        const base64Data = base64.split(",")[1]
+        const imageBuffer = Uint8Array.from(atob(base64Data), (c) => c.charCodeAt(0))
+
+        parts.push(
+          new ImageRun({
+            data: imageBuffer,
+            transformation: {
+              width: 400,
+              height: 300,
+            },
+            type: "png",
+          })
+        )
+      } else {
+        appendTextRun("[Gambar tidak dapat dimuat turun]")
+      }
+
+      return
+    }
+
+    if (tagName === "BR") {
+      appendLineBreak()
+      return
+    }
+
+    for (const child of Array.from(node.childNodes)) {
+      await walkNode(child, nextBold)
+    }
+
+    if (tagName === "P" || tagName === "DIV") {
+      appendLineBreak()
+    }
+  }
+
+  await walkNode(document.body)
+
+  if (parts.length === 0) {
+    return [new TextRun("")]
   }
 
   return parts
@@ -1169,6 +1201,21 @@ function normalizeWordOptionHtml(html: string) {
     .replace(/<p[^>]*>/gi, "")
     .replace(/<\/p>/gi, "<br />")
     .replace(/(<br\s*\/?>\s*)+$/gi, "")
+}
+
+function htmlToPlainText(html: string) {
+  if (!html) return ""
+
+  const normalized = html
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p>/gi, "\n")
+    .replace(/<\/div>/gi, "\n")
+
+  const doc = new DOMParser().parseFromString(normalized, "text/html")
+
+  return (doc.body.textContent || "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim()
 }
 
 function escapeHtml(text: string) {
