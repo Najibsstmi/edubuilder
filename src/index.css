@@ -984,12 +984,43 @@
   padding: 12px 14px;
 }
 
+.translation-ai-bar {
+  align-items: center;
+  background: linear-gradient(135deg, #eff6ff, #f8fafc);
+  border: 1px solid #bfdbfe;
+  border-radius: 14px;
+  display: flex;
+  gap: 14px;
+  justify-content: space-between;
+  padding: 14px;
+}
+
+.translation-ai-bar div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.translation-ai-bar strong {
+  color: #0f172a;
+}
+
+.translation-ai-bar span {
+  color: #52647f;
+  font-size: 0.9rem;
+}
+
 @media (max-width: 900px) {
   .metadata-clean-grid {
     grid-template-columns: 1fr;
   }
 
   .metadata-ai-bar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .translation-ai-bar {
     align-items: stretch;
     flex-direction: column;
   }

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react"
 import { Link } from "react-router-dom"
 import { supabase } from "../lib/supabase"
 import { useAuth } from "../contexts/AuthContext"
+import { auditItemLanguage, languageStatusLabel, type LanguageStatus } from "../lib/languageAudit"
 
 type ItemRow = {
   id: string
@@ -64,6 +65,7 @@ type FilterState = {
   construct: string
   difficulty: string
   status: string
+  language: "" | LanguageStatus
 }
 
 const defaultFilters: FilterState = {
@@ -74,6 +76,7 @@ const defaultFilters: FilterState = {
   construct: "",
   difficulty: "",
   status: "",
+  language: "",
 }
 
 type BankStats = {
@@ -355,6 +358,7 @@ export default function BankSoalanAdmin() {
       if (filters.construct && (item.main_construct || "") !== filters.construct) return false
       if (filters.difficulty && (item.difficulty_level || "") !== filters.difficulty) return false
       if (filters.status && item.status !== filters.status) return false
+      if (filters.language && auditItemLanguage(item) !== filters.language) return false
 
       return true
     })
@@ -523,6 +527,21 @@ export default function BankSoalanAdmin() {
             </select>
           </Field>
 
+          <Field label="Bahasa">
+            <select
+              className="input"
+              value={filters.language}
+              onChange={(e) =>
+                setFilters((prev) => ({ ...prev, language: e.target.value as FilterState["language"] }))
+              }
+            >
+              <option value="">Semua</option>
+              <option value="bm_only">BM sahaja</option>
+              <option value="bilingual">Dwi bahasa</option>
+              <option value="uncertain">Tidak pasti</option>
+            </select>
+          </Field>
+
           <div className="field-wrap">
             <label className="field-label">&nbsp;</label>
             <button
@@ -586,6 +605,10 @@ export default function BankSoalanAdmin() {
                         </Badge>
 
                         <Badge tone={statusTone(item.status)}>{item.status}</Badge>
+
+                        <Badge tone={languageTone(auditItemLanguage(item))}>
+                          {languageStatusLabel(auditItemLanguage(item))}
+                        </Badge>
                       </div>
                     </div>
 
@@ -767,6 +790,10 @@ export default function BankSoalanAdmin() {
                     label="Status"
                     value={previewItem.status}
                   />
+                  <PreviewRow
+                    label="Bahasa"
+                    value={languageStatusLabel(auditItemLanguage(previewItem))}
+                  />
                 </div>
 
                 <div className="preview-section-block">
@@ -925,6 +952,12 @@ function Badge({
   tone: "blue" | "purple" | "orange" | "gray" | "green" | "red" | "yellow"
 }) {
   return <span className={`badge badge-${tone}`}>{children}</span>
+}
+
+function languageTone(status: LanguageStatus): "blue" | "purple" | "orange" | "gray" | "green" | "red" | "yellow" {
+  if (status === "bilingual") return "green"
+  if (status === "bm_only") return "yellow"
+  return "gray"
 }
 
 function truncate(text: string, max = 180) {
@@ -1101,6 +1134,7 @@ function getFilterSummary(filters: FilterState) {
     filters.construct || "",
     filters.difficulty || "",
     filters.status || "",
+    filters.language ? languageStatusLabel(filters.language) : "",
   ].filter(Boolean)
 
   return active.length > 0 ? `Penapis aktif: ${active.join(" · ")}` : "Penapis disembunyikan untuk paparan bank soalan yang lebih luas."

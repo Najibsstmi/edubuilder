@@ -231,6 +231,7 @@ export default function ItemFormPage() {
   const [suggestingMetadata, setSuggestingMetadata] = useState(false)
   const [generatingSchemeId, setGeneratingSchemeId] = useState<string | null>(null)
   const [generatingScheme, setGeneratingScheme] = useState(false)
+  const [translatingBilingual, setTranslatingBilingual] = useState(false)
   const [subQuestions, setSubQuestions] = useState<SubQuestion[]>(() => createInitialSubQuestions())
 
   const isPaper1 = paper === "paper_1"
@@ -714,6 +715,107 @@ export default function ItemFormPage() {
       console.error(err)
     } finally {
       setGeneratingScheme(false)
+    }
+  }
+
+  async function addEnglishTranslations() {
+    if (translatingBilingual) return
+
+    const hasContent =
+      !isRichContentEmpty(stemText) ||
+      options.some((option) => !isRichContentEmpty(option.text)) ||
+      subQuestions.some((item) => !isRichContentEmpty(item.questionText) || item.answerSchemeText.trim())
+
+    if (!hasContent) {
+      setMessage("Masukkan kandungan soalan dahulu sebelum tambah terjemahan BI.")
+      return
+    }
+
+    setMessage("")
+    setTranslatingBilingual(true)
+
+    try {
+      const { data, error } = await supabase.functions.invoke("translate-item-bilingual", {
+        body: {
+          subject: "Sains KSSM SPM 1511",
+          paper,
+          section,
+          tingkatan,
+          languageMode: "add_missing_english",
+          item: {
+            stemText,
+            answerSchemeText,
+            explanationText,
+            options: options.map((option) => ({
+              label: option.label,
+              text: option.text,
+            })),
+            subQuestions: subQuestions.map((item) => ({
+              id: item.id,
+              label: item.label,
+              subLabel: item.subLabel,
+              questionText: item.questionText,
+              answerSchemeText: item.answerSchemeText,
+              responseType: item.responseType,
+            })),
+          },
+        },
+      })
+
+      if (error) throw error
+      if (!data?.item) throw new Error("AI tidak memulangkan terjemahan.")
+
+      if (typeof data.item.stemText === "string") {
+        setStemText(data.item.stemText)
+      }
+
+      if (typeof data.item.answerSchemeText === "string") {
+        setAnswerSchemeText(data.item.answerSchemeText)
+      }
+
+      if (typeof data.item.explanationText === "string") {
+        setExplanationText(data.item.explanationText)
+      }
+
+      if (Array.isArray(data.item.options)) {
+        setOptions((prev) =>
+          prev.map((option) => {
+            const translated = data.item.options.find((item: { label: string }) => item.label === option.label)
+            return translated?.text ? { ...option, text: translated.text } : option
+          }),
+        )
+      }
+
+      if (Array.isArray(data.item.subQuestions)) {
+        setSubQuestions((prev) =>
+          prev.map((subQuestion) => {
+            const translated = data.item.subQuestions.find(
+              (item: { id?: string; label?: string; subLabel?: string }) =>
+                item.id === subQuestion.id ||
+                (item.label === subQuestion.label && (item.subLabel || "") === subQuestion.subLabel),
+            )
+
+            return {
+              ...subQuestion,
+              questionText:
+                typeof translated?.questionText === "string"
+                  ? translated.questionText
+                  : subQuestion.questionText,
+              answerSchemeText:
+                typeof translated?.answerSchemeText === "string"
+                  ? translated.answerSchemeText
+                  : subQuestion.answerSchemeText,
+            }
+          }),
+        )
+      }
+
+      setMessage(data.quota?.remainingText || "Terjemahan BI telah ditambah. Sila semak sebelum simpan.")
+    } catch (error: any) {
+      console.error("Translate bilingual error", error)
+      setMessage(error.message || "Gagal tambah terjemahan BI.")
+    } finally {
+      setTranslatingBilingual(false)
     }
   }
 
@@ -1527,6 +1629,21 @@ export default function ItemFormPage() {
               subtitle="Isi stem, stimulus, rajah, jadual dan konteks utama item."
             >
               <div className="space-y-4">
+                <div className="translation-ai-bar">
+                  <div>
+                    <strong>Terjemahan dwi bahasa</strong>
+                    <span>Tambah Bahasa Inggeris hanya pada ayat BM yang belum diterjemah.</span>
+                  </div>
+                  <button
+                    type="button"
+                    className="btn btn-light"
+                    onClick={() => void addEnglishTranslations()}
+                    disabled={translatingBilingual}
+                  >
+                    {translatingBilingual ? "Menterjemah..." : "Tambah Terjemahan BI"}
+                  </button>
+                </div>
+
                 <Field label="Stem Soalan">
                   <Suspense fallback={<div className="input">Memuat editor...</div>}>
                     <RichEditor
