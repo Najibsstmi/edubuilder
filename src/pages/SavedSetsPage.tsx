@@ -1,6 +1,19 @@
 import { useEffect, useMemo, useState } from "react"
 import { useAuth } from "../contexts/AuthContext"
 import { supabase } from "../lib/supabase"
+import {
+  AlignmentType,
+  BorderStyle,
+  Document,
+  ImageRun,
+  Packer,
+  Paragraph,
+  Table,
+  TableCell,
+  TableRow,
+  TextRun,
+  WidthType,
+} from "docx"
 // @ts-ignore
 import { saveAs } from "file-saver"
 
@@ -228,12 +241,10 @@ export default function SavedSetsPage() {
     try {
       setMessage("Menjana fail Word...")
 
-      const html = buildWordHtml(selectedSet, selectedItems)
-      const blob = new Blob([html], {
-        type: "application/msword;charset=utf-8",
-      })
+      const doc = await buildQuestionDocx(selectedSet, selectedItems)
+      const blob = await Packer.toBlob(doc)
 
-      saveAs(blob, `${slugify(selectedSet.title)}.doc`)
+      saveAs(blob, `${slugify(selectedSet.title)}.docx`)
 
       setMessage("Word berjaya dijana.")
     } catch (error: any) {
@@ -262,159 +273,515 @@ export default function SavedSetsPage() {
     }
   }
 
-  function buildWordHtml(set: SavedSet, items: NormalizedSetItem[]) {
-    const questionHtml = items
-      .map((row, index) => {
-        if (!row.item) return ""
+  async function buildQuestionDocx(set: SavedSet, items: NormalizedSetItem[]) {
+    const children: any[] = [
+      new Paragraph({
+        alignment: AlignmentType.CENTER,
+        spacing: { after: 80, line: 276 },
+        children: [
+          new TextRun({
+            text: (set.title || "Latihan Sains").toUpperCase(),
+            bold: true,
+            font: "Times New Roman",
+            size: 24,
+          }),
+        ],
+      }),
+      wordParagraph("Sains KSSM", { alignment: AlignmentType.CENTER, after: 40 }),
+      wordParagraph(set.tingkatan ? `Tingkatan ${set.tingkatan}` : "Tingkatan 4 dan 5", {
+        alignment: AlignmentType.CENTER,
+        after: 220,
+      }),
+      wordParagraph(generatePaperInstruction(set, items), { after: 220 }),
+    ]
 
-        const stemHtml = row.item.stem_text || ""
-        let contentHtml = `<div class="question-stem">${stemHtml}</div>`
+    for (const [index, row] of items.entries()) {
+      if (!row.item) continue
 
-        if (set.paper === "paper_1" && row.item.item_options?.length) {
-          const optionsHtml = sortOptions(row.item.item_options)
-            .map((option) => {
-              const contentHtml = option.option_text || ""
-              const imageHtml = option.option_image_url
-                ? `<img src="${escapeHtml(option.option_image_url)}" alt="Pilihan ${escapeHtml(option.option_label)}" />`
-                : ""
+      const contentChildren: any[] = [
+        ...(await htmlToWordBlocks(row.item.stem_text || "")),
+      ]
 
-              return `
-                <div class="question-option">
-                  <div class="option-label">${escapeHtml(option.option_label)}.</div>
-                  <div class="option-content">${contentHtml}${imageHtml}</div>
-                </div>
-              `
-            })
-            .join("")
+      if (set.paper === "paper_1" && row.item.item_options?.length) {
+        contentChildren.push(...(await buildOptionBlocks(row.item.item_options)))
+      }
 
-          contentHtml += `
-            <div class="question-options">
-              ${optionsHtml}
-            </div>
-          `
+      if (set.paper === "paper_2" && row.item.item_subquestions?.length) {
+        contentChildren.push(...(await buildSubQuestionBlocks(row.item, row.item.item_subquestions)))
+      }
+
+      if (contentChildren.length === 0) contentChildren.push(wordParagraph(""))
+
+      children.push(
+        new Table({
+          width: { size: 100, type: WidthType.PERCENTAGE },
+          borders: tableNoBorders(),
+          rows: [
+            new TableRow({
+              cantSplit: true,
+              children: [
+                new TableCell({
+                  width: { size: 520, type: WidthType.DXA },
+                  borders: tableNoBorders(),
+                  children: [wordParagraph(`${index + 1}.`, { after: 0 })],
+                }),
+                new TableCell({
+                  borders: tableNoBorders(),
+                  children: contentChildren,
+                }),
+              ],
+            }),
+          ],
+        }),
+        wordParagraph("", { after: 260 }),
+      )
+    }
+
+    return new Document({
+      styles: {
+        default: {
+          document: {
+            run: {
+              font: "Times New Roman",
+              size: 24,
+            },
+            paragraph: {
+              spacing: { line: 276 },
+            },
+          },
+        },
+      },
+      sections: [
+        {
+          properties: {
+            page: {
+              margin: {
+                top: 1134,
+                right: 1134,
+                bottom: 1134,
+                left: 1134,
+              },
+            },
+          },
+          children,
+        },
+      ],
+    })
+  }
+
+  async function buildOptionBlocks(options: ItemOption[]) {
+    const rows: TableRow[] = []
+
+    for (const option of sortOptions(options)) {
+      const contentChildren = await htmlToWordBlocks(option.option_text || "")
+      if (option.option_image_url) {
+        const image = await createWordImage(option.option_image_url)
+        if (image) {
+          contentChildren.push(
+            new Paragraph({
+              spacing: { before: 40, after: 40, line: 276 },
+              children: [image],
+            }),
+          )
         }
+      }
 
-        if (set.paper === "paper_2" && row.item.item_subquestions?.length) {
-          const subHtml = sortSubQuestions(row.item.item_subquestions)
-            .map((sub) => {
-              const label = `(${escapeHtml(sub.label)})${sub.sub_label ? `(${escapeHtml(sub.sub_label)})` : ""}`
-              const questionText = sub.question_text || ""
-              const lineCount = Math.max(1, sub.marks || 1)
-              const answerLines = Array.from({ length: lineCount }).map(() => '<div class="answer-line"></div>').join('')
+      rows.push(
+        new TableRow({
+          cantSplit: true,
+          children: [
+            new TableCell({
+              width: { size: 420, type: WidthType.DXA },
+              borders: tableNoBorders(),
+              children: [wordParagraph(`${option.option_label}.`, { bold: true, after: 0 })],
+            }),
+            new TableCell({
+              borders: tableNoBorders(),
+              children: contentChildren.length ? contentChildren : [wordParagraph("")],
+            }),
+          ],
+        }),
+      )
+    }
 
-              return `
-                <table class="subquestion-table">
-                  <tr>
-                    <td class="sub-label">${label}</td>
-                    <td class="sub-content">
-                      <div class="sub-text">${questionText}</div>
-                      <div class="answer-lines">${answerLines}</div>
-                      <div class="sub-marks">[${sub.marks} markah]</div>
-                    </td>
-                  </tr>
-                </table>
-              `
-            })
-            .join("")
+    return [
+      new Table({
+        width: { size: 100, type: WidthType.PERCENTAGE },
+        borders: tableNoBorders(),
+        rows,
+      }),
+    ]
+  }
 
-          contentHtml += subHtml
+  async function buildSubQuestionBlocks(item: SavedItem, subquestions: ItemSubQuestion[]) {
+    const blocks: any[] = []
+    let previousLabel = ""
+
+    for (const sub of sortSubQuestions(subquestions)) {
+      const mainLabel = sub.label === previousLabel ? "" : `(${sub.label})`
+      const subLabel = sub.sub_label ? `(${sub.sub_label})` : ""
+      previousLabel = sub.label
+      const contentChildren = await htmlToWordBlocks(sub.question_text || "")
+
+      if (shouldShowAnswerSpace(item, sub)) {
+        contentChildren.push(...wordAnswerLines(sub.response_type, sub.marks))
+      }
+
+      if (!isInstructionSubQuestionPreview(sub)) {
+        contentChildren.push(
+          wordParagraph(`[${sub.marks} markah]`, {
+            alignment: AlignmentType.RIGHT,
+            bold: true,
+            after: 180,
+          }),
+        )
+      }
+
+      blocks.push(
+        new Table({
+          width: { size: 100, type: WidthType.PERCENTAGE },
+          borders: tableNoBorders(),
+          rows: [
+            new TableRow({
+              cantSplit: true,
+              children: [
+                new TableCell({
+                  width: { size: 460, type: WidthType.DXA },
+                  borders: tableNoBorders(),
+                  children: [wordParagraph(mainLabel, { bold: true, after: 0 })],
+                }),
+                new TableCell({
+                  width: { size: 440, type: WidthType.DXA },
+                  borders: tableNoBorders(),
+                  children: [wordParagraph(subLabel, { bold: true, after: 0 })],
+                }),
+                new TableCell({
+                  borders: tableNoBorders(),
+                  children: contentChildren.length ? contentChildren : [wordParagraph("")],
+                }),
+              ],
+            }),
+          ],
+        }),
+      )
+    }
+
+    return blocks
+  }
+
+  async function htmlToWordBlocks(html: string): Promise<any[]> {
+    if (!html.trim()) return []
+
+    const doc = new DOMParser().parseFromString(html, "text/html")
+    const blocks: any[] = []
+
+    for (const node of Array.from(doc.body.childNodes)) {
+      blocks.push(...(await nodeToWordBlocks(node)))
+    }
+
+    return blocks.length ? blocks : [wordParagraph(htmlToPlainText(html))]
+  }
+
+  async function nodeToWordBlocks(node: ChildNode): Promise<any[]> {
+    if (node.nodeType === Node.TEXT_NODE) {
+      const text = node.textContent?.replace(/\s+/g, " ").trim() || ""
+      return text ? [wordParagraph(text)] : []
+    }
+
+    if (!(node instanceof HTMLElement)) return []
+
+    const tag = node.tagName.toLowerCase()
+
+    if (!["img", "table"].includes(tag) && node.querySelector("img, table")) {
+      const blocks: any[] = []
+      const paragraphChildren: any[] = []
+
+      for (const child of Array.from(node.childNodes)) {
+        if (child instanceof HTMLElement && (child.matches("img, table") || child.querySelector("img, table"))) {
+          if (paragraphChildren.length) {
+            blocks.push(wordParagraphRuns(paragraphChildren, { alignment: getWordAlignment(node) }))
+            paragraphChildren.length = 0
+          }
+          blocks.push(...(await nodeToWordBlocks(child)))
+        } else {
+          paragraphChildren.push(...(await inlineNodeToRuns(child)))
         }
+      }
 
-        return `
-          <table class="question-row-table">
-            <tr>
-              <td class="question-no">${index + 1}.</td>
-              <td class="question-content">${contentHtml}</td>
-            </tr>
-          </table>
-        `
+      if (paragraphChildren.length) {
+        blocks.push(wordParagraphRuns(paragraphChildren, { alignment: getWordAlignment(node) }))
+      }
+
+      return blocks
+    }
+
+    if (tag === "br") return [wordParagraph("")]
+
+    if (tag === "img") {
+      const image = await createWordImage(node.getAttribute("src") || "")
+      return image
+        ? [
+            new Paragraph({
+              alignment: AlignmentType.CENTER,
+              spacing: { before: 80, after: 80, line: 276 },
+              children: [image],
+            }),
+          ]
+        : []
+    }
+
+    if (tag === "table") {
+      const table = await htmlTableToWordTable(node as HTMLTableElement)
+      return table ? [table] : []
+    }
+
+    if (["p", "div", "li", "h1", "h2", "h3"].includes(tag)) {
+      const blocks: any[] = []
+      const paragraphChildren: any[] = []
+
+      for (const child of Array.from(node.childNodes)) {
+        if (child instanceof HTMLElement && ["img", "table", "div", "p"].includes(child.tagName.toLowerCase())) {
+          if (paragraphChildren.length) {
+            blocks.push(wordParagraphRuns(paragraphChildren, { alignment: getWordAlignment(node) }))
+            paragraphChildren.length = 0
+          }
+          blocks.push(...(await nodeToWordBlocks(child)))
+        } else {
+          paragraphChildren.push(...(await inlineNodeToRuns(child)))
+        }
+      }
+
+      if (paragraphChildren.length) {
+        blocks.push(wordParagraphRuns(paragraphChildren, { alignment: getWordAlignment(node) }))
+      }
+
+      return blocks
+    }
+
+    const runs = await inlineNodeToRuns(node)
+    return runs.length ? [wordParagraphRuns(runs, { alignment: getWordAlignment(node) })] : []
+  }
+
+  async function inlineNodeToRuns(node: ChildNode, inherited: Record<string, any> = {}): Promise<TextRun[]> {
+    if (node.nodeType === Node.TEXT_NODE) {
+      const text = node.textContent?.replace(/\s+/g, " ") || ""
+      return text ? [new TextRun({ text, font: "Times New Roman", size: 24, ...inherited })] : []
+    }
+
+    if (!(node instanceof HTMLElement)) return []
+
+    const tag = node.tagName.toLowerCase()
+    if (tag === "img" || node.querySelector("img, table")) return []
+
+    const next: Record<string, any> = { ...inherited }
+    if (["strong", "b"].includes(tag)) next.bold = true
+    if (["em", "i"].includes(tag)) next.italics = true
+    if (tag === "u") next.underline = {}
+
+    if (tag === "br") return [new TextRun({ text: "", break: 1, font: "Times New Roman", size: 24 })]
+
+    const runs: TextRun[] = []
+    for (const child of Array.from(node.childNodes)) {
+      runs.push(...(await inlineNodeToRuns(child, next)))
+    }
+    return runs
+  }
+
+  async function htmlTableToWordTable(tableEl: HTMLTableElement) {
+    const rows: TableRow[] = []
+
+    for (const tr of Array.from(tableEl.querySelectorAll("tr"))) {
+      const cells: TableCell[] = []
+      for (const cell of Array.from(tr.children)) {
+        const children = await htmlToWordBlocks(cell.innerHTML)
+        cells.push(
+          new TableCell({
+            children: children.length ? children : [wordParagraph("")],
+            margins: { top: 80, right: 80, bottom: 80, left: 80 },
+          }),
+        )
+      }
+      if (cells.length) rows.push(new TableRow({ cantSplit: true, children: cells }))
+    }
+
+    if (!rows.length) return null
+
+    return new Table({
+      width: { size: 100, type: WidthType.PERCENTAGE },
+      borders: {
+        top: { style: BorderStyle.SINGLE, size: 4, color: "000000" },
+        bottom: { style: BorderStyle.SINGLE, size: 4, color: "000000" },
+        left: { style: BorderStyle.SINGLE, size: 4, color: "000000" },
+        right: { style: BorderStyle.SINGLE, size: 4, color: "000000" },
+        insideHorizontal: { style: BorderStyle.SINGLE, size: 4, color: "000000" },
+        insideVertical: { style: BorderStyle.SINGLE, size: 4, color: "000000" },
+      },
+      rows,
+    })
+  }
+
+  async function createWordImage(src: string) {
+    if (!src) return null
+
+    try {
+      const response = await fetch(src)
+      if (!response.ok) return null
+
+      const blob = await response.blob()
+      let imageBlob = blob
+      let type = getDocxImageType(blob.type, src)
+
+      if (!type) {
+        imageBlob = await convertImageBlobToPng(blob)
+        type = "png"
+      }
+
+      const data = await imageBlob.arrayBuffer()
+      const { width, height } = await getImageSize(blob)
+      const maxWidth = 360
+      const ratio = width > maxWidth ? maxWidth / width : 1
+
+      return new ImageRun({
+        type,
+        data,
+        transformation: {
+          width: Math.round(width * ratio),
+          height: Math.round(height * ratio),
+        },
       })
-      .join("")
+    } catch (error) {
+      console.warn("Word image skipped", error)
+      return null
+    }
+  }
 
-    return `
-      <!doctype html>
-      <html>
-        <head>
-          <meta charset="utf-8" />
-          <title>${escapeHtml(set.title || "Set Soalan")}</title>
-          <style>
-            body { font-family: Arial, sans-serif; color: #111; margin: 20px; }
-            .document { max-width: 900px; margin: auto; }
-            .doc-head { text-align: center; margin-bottom: 24px; }
-            .doc-head h1 { margin: 0 0 8px; font-size: 24px; }
-            .doc-head .meta { margin: 4px 0; }
-            .question-row-table {
-              width: 100%;
-              border-collapse: collapse;
-              margin-bottom: 14pt;
-            }
-            .question-row-table td {
-              border: none;
-              vertical-align: top;
-            }
-            .question-no {
-              width: 24pt;
-              padding-right: 6pt;
-              font-weight: normal;
-            }
-            .question-content {
-              width: auto;
-            }
-            .question-stem { margin: 8px 0; }
-            .question-options { margin-top: 10px; padding-left: 18px; }
-            .question-option { margin-bottom: 8px; }
-            .option-label { font-weight: bold; display: inline-block; width: 24px; }
-            .option-content { display: inline-block; vertical-align: top; max-width: 850px; }
-            .subquestion-table {
-              width: 100%;
-              border-collapse: collapse;
-              margin-top: 10pt;
-            }
-            .subquestion-table td {
-              border: none;
-              vertical-align: top;
-            }
-            .sub-label {
-              width: 42pt;
-              font-weight: bold;
-            }
-            .sub-content {
-              width: auto;
-            }
-            .sub-text { margin: 6px 0; }
-            .answer-lines {
-              margin-top: 8pt;
-            }
-            .answer-line {
-              border-bottom: 1px solid #000;
-              height: 14pt;
-              margin-bottom: 4pt;
-            }
-            .sub-marks {
-              text-align: right;
-              font-weight: bold;
-              margin-top: 2pt;
-            }
-            img {
-              max-width: 10.5cm !important;
-              height: auto !important;
-              display: block;
-              margin: 6pt auto;
-            }
-          </style>
-        </head>
-        <body>
-          <div class="document">
-            <div class="doc-head">
-              <h1>${escapeHtml(set.title || "Latihan Sains")}</h1>
-              <div class="meta">Sains KSSM</div>
-              <div class="meta">${set.tingkatan ? `Tingkatan ${set.tingkatan}` : "Tingkatan 4 dan 5"}</div>
-            </div>
-            ${questionHtml}
-          </div>
-        </body>
-      </html>
-    `
+  function convertImageBlobToPng(blob: Blob): Promise<Blob> {
+    return new Promise((resolve, reject) => {
+      const url = URL.createObjectURL(blob)
+      const img = new Image()
+      img.onload = () => {
+        const canvas = document.createElement("canvas")
+        canvas.width = img.naturalWidth || 360
+        canvas.height = img.naturalHeight || 240
+        const context = canvas.getContext("2d")
+        if (!context) {
+          URL.revokeObjectURL(url)
+          reject(new Error("Canvas tidak tersedia untuk tukar imej."))
+          return
+        }
+
+        context.drawImage(img, 0, 0)
+        canvas.toBlob((pngBlob) => {
+          URL.revokeObjectURL(url)
+          if (pngBlob) resolve(pngBlob)
+          else reject(new Error("Gagal tukar imej kepada PNG."))
+        }, "image/png")
+      }
+      img.onerror = () => {
+        URL.revokeObjectURL(url)
+        reject(new Error("Format imej tidak boleh dibaca."))
+      }
+      img.src = url
+    })
+  }
+
+  function getDocxImageType(mimeType: string, src: string) {
+    const lower = `${mimeType} ${src}`.toLowerCase()
+    if (lower.includes("png") || lower.endsWith(".png")) return "png" as const
+    if (lower.includes("jpg") || lower.includes("jpeg") || lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "jpg" as const
+    if (lower.includes("gif") || lower.endsWith(".gif")) return "gif" as const
+    if (lower.includes("bmp") || lower.endsWith(".bmp")) return "bmp" as const
+    return null
+  }
+
+  function getImageSize(blob: Blob): Promise<{ width: number; height: number }> {
+    return new Promise((resolve) => {
+      const url = URL.createObjectURL(blob)
+      const img = new Image()
+      img.onload = () => {
+        URL.revokeObjectURL(url)
+        resolve({ width: img.naturalWidth || 360, height: img.naturalHeight || 240 })
+      }
+      img.onerror = () => {
+        URL.revokeObjectURL(url)
+        resolve({ width: 360, height: 240 })
+      }
+      img.src = url
+    })
+  }
+
+  function wordAnswerLines(responseType: string, marks = 1) {
+    if (responseType === "instruction" || responseType === "provided_space") return []
+
+    const count =
+      responseType === "calculation"
+        ? Math.max(5, marks)
+        : responseType === "structured_text"
+          ? Math.max(2, marks)
+          : Math.max(1, Math.min(marks, 4))
+
+    return Array.from({ length: count }).map(
+      () =>
+        new Paragraph({
+          border: {
+            bottom: { style: BorderStyle.SINGLE, size: 4, color: "000000" },
+          },
+          spacing: { before: 100, after: 80, line: 276 },
+          children: [new TextRun({ text: "", font: "Times New Roman", size: 24 })],
+        }),
+    )
+  }
+
+  function wordParagraph(
+    text: string,
+    options: {
+      alignment?: (typeof AlignmentType)[keyof typeof AlignmentType]
+      bold?: boolean
+      after?: number
+    } = {},
+  ) {
+    return new Paragraph({
+      alignment: options.alignment,
+      spacing: { after: options.after ?? 80, line: 276 },
+      children: [
+        new TextRun({
+          text,
+          bold: options.bold,
+          font: "Times New Roman",
+          size: 24,
+        }),
+      ],
+    })
+  }
+
+  function wordParagraphRuns(
+    children: TextRun[],
+    options: { alignment?: (typeof AlignmentType)[keyof typeof AlignmentType] } = {},
+  ) {
+    return new Paragraph({
+      alignment: options.alignment,
+      spacing: { after: 80, line: 276 },
+      children: children.length ? children : [new TextRun({ text: "", font: "Times New Roman", size: 24 })],
+    })
+  }
+
+  function getWordAlignment(element: HTMLElement) {
+    const align = element.style.textAlign || element.getAttribute("align") || ""
+    if (align === "center") return AlignmentType.CENTER
+    if (align === "right") return AlignmentType.RIGHT
+    if (align === "justify") return AlignmentType.JUSTIFIED
+    return AlignmentType.JUSTIFIED
+  }
+
+  function tableNoBorders() {
+    return {
+      top: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
+      bottom: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
+      left: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
+      right: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
+      insideHorizontal: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
+      insideVertical: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
+    }
   }
 
   function buildSchemeWordHtml(set: SavedSet, items: NormalizedSetItem[]) {
