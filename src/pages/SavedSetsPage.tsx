@@ -1622,7 +1622,10 @@ function applyTranslatedFields(item: SavedItem, translated: any): Partial<SavedI
 
   return {
     stem_text: translated.stemText ?? item.stem_text,
-    answer_scheme_text: translated.answerSchemeText ?? item.answer_scheme_text,
+    answer_scheme_text:
+      typeof translated.answerSchemeText === "string"
+        ? htmlToPlainText(translated.answerSchemeText)
+        : item.answer_scheme_text,
     explanation_text: translated.explanationText ?? item.explanation_text,
     item_options: (item.item_options || []).map((option) => ({
       ...option,
@@ -1643,9 +1646,13 @@ function applyTranslatedFields(item: SavedItem, translated: any): Partial<SavedI
           translatedSub.text ??
           sub.question_text,
         answer_scheme_text:
-          translatedSub.answerSchemeText ??
-          translatedSub.answer_scheme_text ??
-          translatedSub.scheme ??
+          (typeof translatedSub.answerSchemeText === "string"
+            ? htmlToPlainText(translatedSub.answerSchemeText)
+            : undefined) ??
+          (typeof translatedSub.answer_scheme_text === "string"
+            ? htmlToPlainText(translatedSub.answer_scheme_text)
+            : undefined) ??
+          (typeof translatedSub.scheme === "string" ? htmlToPlainText(translatedSub.scheme) : undefined) ??
           sub.answer_scheme_text,
       }
     }),

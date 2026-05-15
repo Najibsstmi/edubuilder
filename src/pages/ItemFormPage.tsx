@@ -408,6 +408,66 @@ export default function ItemFormPage() {
       .trim()
   }
 
+  function htmlToTextareaText(value: string) {
+    const normalized = value
+      .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, " ")
+      .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, " ")
+      .replace(/<br\s*\/?>/gi, "\n")
+      .replace(/<\/p>/gi, "\n")
+      .replace(/<\/div>/gi, "\n")
+      .replace(/<[^>]+>/g, "")
+      .replace(/&nbsp;/g, " ")
+      .replace(/&amp;/g, "&")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&quot;/g, '"')
+      .replace(/&#039;/g, "'")
+
+    return normalized
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .join("\n")
+      .trim()
+  }
+
+  function normalizeQuestionPart(value: unknown) {
+    return String(value || "")
+      .trim()
+      .replace(/[()]/g, "")
+      .toLowerCase()
+  }
+
+  function readTranslatedText(source: any, keys: string[]) {
+    for (const key of keys) {
+      const value = source?.[key]
+      if (typeof value === "string") return value
+    }
+    return undefined
+  }
+
+  function readTranslatedArray(source: any, keys: string[]) {
+    for (const key of keys) {
+      const value = source?.[key]
+      if (Array.isArray(value)) return value
+    }
+    return []
+  }
+
+  function findTranslatedSubQuestion(translatedSubs: any[], subQuestion: SubQuestion, index: number) {
+    const byId = translatedSubs.find((item) => item?.id && String(item.id) === subQuestion.id)
+    if (byId) return byId
+
+    const subQuestionKey = `${normalizeQuestionPart(subQuestion.label)}::${normalizeQuestionPart(subQuestion.subLabel)}`
+    const byLabel = translatedSubs.find((item) => {
+      const label = item?.label ?? item?.question_label
+      const subLabel = item?.subLabel ?? item?.sub_label ?? item?.question_sub_label
+      return `${normalizeQuestionPart(label)}::${normalizeQuestionPart(subLabel)}` === subQuestionKey
+    })
+
+    return byLabel || translatedSubs[index]
+  }
+
   function escapeHtml(text: string) {
     return text
       .replace(/&/g, "&amp;")
@@ -765,45 +825,73 @@ export default function ItemFormPage() {
       if (error) throw error
       if (!data?.item) throw new Error("AI tidak memulangkan terjemahan.")
 
-      if (typeof data.item.stemText === "string") {
-        setStemText(data.item.stemText)
+      const translatedItem = data.item
+      const translatedStemText = readTranslatedText(translatedItem, ["stemText", "stem_text", "stem"])
+      const translatedAnswerSchemeText = readTranslatedText(translatedItem, [
+        "answerSchemeText",
+        "answer_scheme_text",
+        "scheme",
+      ])
+      const translatedExplanationText = readTranslatedText(translatedItem, [
+        "explanationText",
+        "explanation_text",
+        "explanation",
+      ])
+
+      if (typeof translatedStemText === "string") {
+        setStemText(translatedStemText)
       }
 
-      if (typeof data.item.answerSchemeText === "string") {
-        setAnswerSchemeText(data.item.answerSchemeText)
+      if (typeof translatedAnswerSchemeText === "string") {
+        setAnswerSchemeText(htmlToTextareaText(translatedAnswerSchemeText))
       }
 
-      if (typeof data.item.explanationText === "string") {
-        setExplanationText(data.item.explanationText)
+      if (typeof translatedExplanationText === "string") {
+        setExplanationText(translatedExplanationText)
       }
 
-      if (Array.isArray(data.item.options)) {
+      const translatedOptions = readTranslatedArray(translatedItem, ["options", "item_options"])
+      if (translatedOptions.length > 0) {
         setOptions((prev) =>
           prev.map((option) => {
-            const translated = data.item.options.find((item: { label: string }) => item.label === option.label)
-            return translated?.text ? { ...option, text: translated.text } : option
+            const translated = translatedOptions.find(
+              (item) => normalizeQuestionPart(item?.label ?? item?.option_label) === normalizeQuestionPart(option.label),
+            )
+            const translatedText = readTranslatedText(translated, ["text", "option_text"])
+            return typeof translatedText === "string" ? { ...option, text: translatedText } : option
           }),
         )
       }
 
-      if (Array.isArray(data.item.subQuestions)) {
+      const translatedSubQuestions = readTranslatedArray(translatedItem, [
+        "subQuestions",
+        "sub_questions",
+        "item_subquestions",
+      ])
+      if (translatedSubQuestions.length > 0) {
         setSubQuestions((prev) =>
-          prev.map((subQuestion) => {
-            const translated = data.item.subQuestions.find(
-              (item: { id?: string; label?: string; subLabel?: string }) =>
-                item.id === subQuestion.id ||
-                (item.label === subQuestion.label && (item.subLabel || "") === subQuestion.subLabel),
-            )
+          prev.map((subQuestion, index) => {
+            const translated = findTranslatedSubQuestion(translatedSubQuestions, subQuestion, index)
+            const translatedQuestionText = readTranslatedText(translated, [
+              "questionText",
+              "question_text",
+              "text",
+            ])
+            const translatedSubAnswerSchemeText = readTranslatedText(translated, [
+              "answerSchemeText",
+              "answer_scheme_text",
+              "scheme",
+            ])
 
             return {
               ...subQuestion,
               questionText:
-                typeof translated?.questionText === "string"
-                  ? translated.questionText
+                typeof translatedQuestionText === "string"
+                  ? translatedQuestionText
                   : subQuestion.questionText,
               answerSchemeText:
-                typeof translated?.answerSchemeText === "string"
-                  ? translated.answerSchemeText
+                typeof translatedSubAnswerSchemeText === "string"
+                  ? htmlToTextareaText(translatedSubAnswerSchemeText)
                   : subQuestion.answerSchemeText,
             }
           }),
