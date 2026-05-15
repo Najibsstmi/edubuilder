@@ -38,6 +38,8 @@ Tugas:
 - Wajib semak dan pulangkan SEMUA item dalam array subQuestions satu demi satu. Jangan abaikan (a)(i), (a)(ii), (a)(iii), atau sub-soalan kecil walaupun stem utama sudah dwi bahasa.
 - Untuk setiap subQuestions[n].questionText yang hanya Bahasa Melayu, tambah terjemahan Bahasa Inggeris terus di bawah teks asal.
 - Untuk setiap subQuestions[n].answerSchemeText yang hanya Bahasa Melayu, tambah terjemahan Bahasa Inggeris terus di bawah skema asal.
+- Untuk setiap subQuestions[n], kekalkan nilai id, label dan subLabel yang sama seperti input. Jangan tukar "a" kepada "(a)" atau "i" kepada "(i)".
+- Bilangan subQuestions dalam output mesti sama dengan bilangan subQuestions dalam input dan susunan mesti sama.
 - Jangan ubah maksud, nombor soalan, label pilihan, markah, formula, simbol, kod imej, tag <img>, jadual HTML, atau struktur item.
 - Jika ayat sudah dwi bahasa, biarkan seperti asal.
 - Jika kandungan ialah HTML, kekalkan HTML dan tambah terjemahan BI sebagai perenggan baharu terus selepas perenggan BM asal.

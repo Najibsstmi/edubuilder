@@ -93,10 +93,16 @@ export default function SavedSetsPage() {
   const [message, setMessage] = useState("")
   const [printMode, setPrintMode] = useState<"question" | "scheme">("question")
   const [translatingSet, setTranslatingSet] = useState(false)
+  const [savingSetTranslation, setSavingSetTranslation] = useState(false)
+  const [translatedSetItemIds, setTranslatedSetItemIds] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     void fetchSets()
   }, [profile?.id])
+
+  useEffect(() => {
+    setTranslatedSetItemIds(new Set())
+  }, [selectedSetId])
 
   const selectedSet = useMemo(
     () => sets.find((set) => set.id === selectedSetId) || sets[0] || null,
@@ -326,6 +332,7 @@ export default function SavedSetsPage() {
             }
           }),
         )
+        setTranslatedSetItemIds(new Set(translatedByItemId.keys()))
       }
 
       setMessage(quotaText || "Terjemahan BI untuk set/export telah diisi. Sila semak sebelum muat turun.")
@@ -334,6 +341,77 @@ export default function SavedSetsPage() {
       setMessage(error.message || "Gagal terjemah BI untuk set.")
     } finally {
       setTranslatingSet(false)
+    }
+  }
+
+  async function saveSetTranslationToBank() {
+    if (!selectedSet) return
+    if (!canPersistSetTranslation(profile)) {
+      setMessage("Simpan terjemahan ke bank hanya untuk admin dan master admin.")
+      return
+    }
+
+    const translatedItems = selectedItems
+      .map((row) => row.item)
+      .filter((item): item is SavedItem => Boolean(item && translatedSetItemIds.has(item.id)))
+
+    if (translatedItems.length === 0) {
+      setMessage("Tiada terjemahan baharu untuk disimpan.")
+      return
+    }
+
+    const confirmed = window.confirm(
+      `Simpan terjemahan BI untuk ${translatedItems.length} item ke Bank Soalan? Ini akan kekal pada item asal.`,
+    )
+    if (!confirmed) return
+
+    setSavingSetTranslation(true)
+    setMessage("Menyimpan terjemahan BI ke Bank Soalan...")
+
+    try {
+      for (const item of translatedItems) {
+        const { error: itemError } = await supabase
+          .from("items")
+          .update({
+            stem_text: item.stem_text,
+            answer_scheme_text: item.answer_scheme_text,
+            explanation_text: item.explanation_text || null,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", item.id)
+
+        if (itemError) throw itemError
+
+        for (const option of item.item_options || []) {
+          const { error: optionError } = await supabase
+            .from("item_options")
+            .update({ option_text: option.option_text })
+            .eq("item_id", item.id)
+            .eq("option_label", option.option_label)
+
+          if (optionError) throw optionError
+        }
+
+        for (const sub of item.item_subquestions || []) {
+          const { error: subError } = await supabase
+            .from("item_subquestions")
+            .update({
+              question_text: sub.question_text,
+              answer_scheme_text: sub.answer_scheme_text,
+            })
+            .eq("id", sub.id)
+
+          if (subError) throw subError
+        }
+      }
+
+      setTranslatedSetItemIds(new Set())
+      setMessage("Terjemahan BI berjaya disimpan ke Bank Soalan.")
+    } catch (error: any) {
+      console.error("Save set translation error", error)
+      setMessage(error.message || "Gagal simpan terjemahan BI.")
+    } finally {
+      setSavingSetTranslation(false)
     }
   }
 
@@ -1059,6 +1137,17 @@ export default function SavedSetsPage() {
                   {translatingSet ? "Menterjemah..." : "Terjemah BI"}
                 </button>
               )}
+              {canPersistSetTranslation(profile) && translatedSetItemIds.size > 0 && (
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={() => void saveSetTranslationToBank()}
+                  disabled={!selectedSet || savingSetTranslation}
+                  title="Simpan terjemahan Bahasa Inggeris ke item asal dalam Bank Soalan."
+                >
+                  {savingSetTranslation ? "Menyimpan..." : "Simpan BI"}
+                </button>
+              )}
               <button
                 type="button"
                 className="btn btn-question"
@@ -1492,6 +1581,10 @@ function canUseSetTranslation(profile: { role?: string; account_type?: string } 
   return profile.role === "master_admin" || profile.role === "admin" || profile.account_type === "full"
 }
 
+function canPersistSetTranslation(profile: { role?: string } | null) {
+  return profile?.role === "master_admin" || profile?.role === "admin"
+}
+
 function itemNeedsSetTranslation(item: SavedItem) {
   const textParts = [
     item.stem_text || "",
@@ -1510,14 +1603,20 @@ function itemNeedsSetTranslation(item: SavedItem) {
 function applyTranslatedFields(item: SavedItem, translated: any): Partial<SavedItem> {
   const optionTextByLabel = new Map<string, string>()
   for (const option of translated.options || []) {
-    if (option?.label) optionTextByLabel.set(String(option.label), option.text || "")
+    const label = normalizeQuestionPart(option?.label || option?.option_label || "")
+    if (label) optionTextByLabel.set(label, option.text || option.option_text || "")
   }
 
+  const translatedSubs = Array.isArray(translated.subQuestions)
+    ? translated.subQuestions
+    : Array.isArray(translated.sub_questions)
+      ? translated.sub_questions
+      : []
   const subById = new Map<string, any>()
   const subByLabel = new Map<string, any>()
-  for (const sub of translated.subQuestions || []) {
+  for (const sub of translatedSubs) {
     if (sub?.id) subById.set(String(sub.id), sub)
-    const key = `${sub?.label || ""}::${sub?.subLabel || ""}`
+    const key = `${normalizeQuestionPart(sub?.label || "")}::${normalizeQuestionPart(sub?.subLabel || sub?.sub_label || "")}`
     if (sub?.label) subByLabel.set(key, sub)
   }
 
@@ -1527,19 +1626,37 @@ function applyTranslatedFields(item: SavedItem, translated: any): Partial<SavedI
     explanation_text: translated.explanationText ?? item.explanation_text,
     item_options: (item.item_options || []).map((option) => ({
       ...option,
-      option_text: optionTextByLabel.get(option.option_label) ?? option.option_text,
+      option_text: optionTextByLabel.get(normalizeQuestionPart(option.option_label)) ?? option.option_text,
     })),
-    item_subquestions: (item.item_subquestions || []).map((sub) => {
-      const translatedSub = subById.get(sub.id) || subByLabel.get(`${sub.label}::${sub.sub_label || ""}`)
+    item_subquestions: (item.item_subquestions || []).map((sub, index) => {
+      const translatedSub =
+        subById.get(sub.id) ||
+        subByLabel.get(`${normalizeQuestionPart(sub.label)}::${normalizeQuestionPart(sub.sub_label || "")}`) ||
+        translatedSubs[index]
       if (!translatedSub) return sub
 
       return {
         ...sub,
-        question_text: translatedSub.questionText ?? sub.question_text,
-        answer_scheme_text: translatedSub.answerSchemeText ?? sub.answer_scheme_text,
+        question_text:
+          translatedSub.questionText ??
+          translatedSub.question_text ??
+          translatedSub.text ??
+          sub.question_text,
+        answer_scheme_text:
+          translatedSub.answerSchemeText ??
+          translatedSub.answer_scheme_text ??
+          translatedSub.scheme ??
+          sub.answer_scheme_text,
       }
     }),
   }
+}
+
+function normalizeQuestionPart(value: string) {
+  return String(value || "")
+    .trim()
+    .replace(/[()]/g, "")
+    .toLowerCase()
 }
 
 function getGuestSavedSets() {
