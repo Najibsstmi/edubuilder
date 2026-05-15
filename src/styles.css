@@ -829,6 +829,16 @@ th, td { padding: 12px; border-bottom: 1px solid #e2e8f0; text-align: left; }
   background: #f8fafc;
 }
 
+.btn-secondary {
+  background: #e0f2fe;
+  color: #075985;
+  border: 1px solid #7dd3fc;
+}
+
+.btn-secondary:hover {
+  background: #bae6fd;
+}
+
 .btn-question {
   background: #facc15;
   color: #422006;

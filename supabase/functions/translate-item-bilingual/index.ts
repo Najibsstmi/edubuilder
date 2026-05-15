@@ -9,6 +9,7 @@ const corsHeaders = {
 type Profile = {
   id: string
   role: "master_admin" | "admin" | "user"
+  account_type: "free" | "full"
   status: "active" | "pending" | "suspended"
 }
 
@@ -34,6 +35,9 @@ Anda ialah penterjemah profesional untuk item peperiksaan Sains SPM KSSM 1511.
 Tugas:
 - Tambah terjemahan Bahasa Inggeris hanya untuk ayat/perenggan Bahasa Melayu yang belum mempunyai terjemahan BI.
 - Terjemahkan juga skema jawapan/panduan pemarkahan pada medan answerSchemeText, termasuk answerSchemeText di dalam setiap sub-soalan.
+- Wajib semak dan pulangkan SEMUA item dalam array subQuestions satu demi satu. Jangan abaikan (a)(i), (a)(ii), (a)(iii), atau sub-soalan kecil walaupun stem utama sudah dwi bahasa.
+- Untuk setiap subQuestions[n].questionText yang hanya Bahasa Melayu, tambah terjemahan Bahasa Inggeris terus di bawah teks asal.
+- Untuk setiap subQuestions[n].answerSchemeText yang hanya Bahasa Melayu, tambah terjemahan Bahasa Inggeris terus di bawah skema asal.
 - Jangan ubah maksud, nombor soalan, label pilihan, markah, formula, simbol, kod imej, tag <img>, jadual HTML, atau struktur item.
 - Jika ayat sudah dwi bahasa, biarkan seperti asal.
 - Jika kandungan ialah HTML, kekalkan HTML dan tambah terjemahan BI sebagai perenggan baharu terus selepas perenggan BM asal.
@@ -118,13 +122,15 @@ Deno.serve(async (req) => {
 
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
-      .select("id, role, status")
+      .select("id, role, status, account_type")
       .eq("id", userData.user.id)
       .single<Profile>()
 
     if (profileError || !profile) return jsonResponse({ error: "Profil pengguna tidak dijumpai." }, 403)
     if (profile.status !== "active") return jsonResponse({ error: "Akaun belum aktif." }, 403)
-    if (profile.role === "user") return jsonResponse({ error: "User tidak mempunyai akses jana AI." }, 403)
+    if (profile.role === "user" && profile.account_type !== "full") {
+      return jsonResponse({ error: "Fungsi terjemah BI hanya untuk admin dan pengguna premium." }, 403)
+    }
 
     const isUnlimited = profile.role === "master_admin"
     const monthlyLimit = 30
@@ -155,7 +161,7 @@ Deno.serve(async (req) => {
       body: JSON.stringify({
         model: "gpt-4o-mini",
         input: prompt,
-        max_output_tokens: 3000,
+        max_output_tokens: 7000,
         temperature: 0.1,
       }),
     })

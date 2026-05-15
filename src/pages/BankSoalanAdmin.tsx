@@ -166,7 +166,6 @@ export default function BankSoalanAdmin() {
         { count: "exact" }
       )
       .order("created_at", { ascending: false })
-      .range(from, to)
 
     // Apply filters if any
     if (filters.tingkatan) {
@@ -189,6 +188,12 @@ export default function BankSoalanAdmin() {
     }
     if (filters.search) {
       query = query.or(`item_code.ilike.%${filters.search}%,stem_text.ilike.%${filters.search}%`)
+    }
+
+    if (filters.language) {
+      query = query.limit(1000)
+    } else {
+      query = query.range(from, to)
     }
 
     const { data, error, count } = await query
@@ -379,6 +384,17 @@ export default function BankSoalanAdmin() {
       new Set(items.map((i) => i.main_construct).filter(Boolean) as string[]),
     ).sort((a, b) => a.localeCompare(b))
   }, [items])
+
+  const visibleItems = useMemo(() => {
+    if (!filters.language) return filteredItems
+
+    const from = (page - 1) * PAGE_SIZE
+    const to = from + PAGE_SIZE
+    return filteredItems.slice(from, to)
+  }, [filteredItems, filters.language, page])
+
+  const paginationTotal = filters.language ? filteredItems.length : totalCount
+  const totalPages = Math.ceil(paginationTotal / PAGE_SIZE) || 1
 
   return (
     <div className="page-shell">
@@ -572,7 +588,7 @@ export default function BankSoalanAdmin() {
           ) : (
             <>
               <div className="bank-card-list">
-                {filteredItems.map((item) => (
+                {visibleItems.map((item) => (
                 <article
                   key={item.id}
                   className={`bank-item-card ${
@@ -701,12 +717,12 @@ export default function BankSoalanAdmin() {
               </button>
 
               <span>
-                Page {page} / {Math.ceil(totalCount / PAGE_SIZE) || 1}
+                Page {page} / {totalPages}
               </span>
 
               <button
                 className="btn btn-light"
-                disabled={page >= Math.ceil(totalCount / PAGE_SIZE)}
+                disabled={page >= totalPages}
                 onClick={() => setPage((p) => p + 1)}
               >
                 Seterusnya →

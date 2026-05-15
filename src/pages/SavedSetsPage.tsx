@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
 import { useAuth } from "../contexts/AuthContext"
+import { auditLanguageText } from "../lib/languageAudit"
 import { supabase } from "../lib/supabase"
 import {
   AlignmentType,
@@ -45,6 +46,7 @@ type SavedItem = {
   item_code: string
   stem_text: string | null
   answer_scheme_text: string | null
+  explanation_text?: string | null
   paper: PaperType
   section: "A" | "B" | "C" | null
   tingkatan: number
@@ -90,6 +92,7 @@ export default function SavedSetsPage() {
   const [deletingSetId, setDeletingSetId] = useState("")
   const [message, setMessage] = useState("")
   const [printMode, setPrintMode] = useState<"question" | "scheme">("question")
+  const [translatingSet, setTranslatingSet] = useState(false)
 
   useEffect(() => {
     void fetchSets()
@@ -142,6 +145,7 @@ export default function SavedSetsPage() {
             item_code,
             stem_text,
             answer_scheme_text,
+            explanation_text,
             paper,
             tingkatan,
             marks,
@@ -232,6 +236,104 @@ export default function SavedSetsPage() {
       setMessage(error.message || "Gagal memadam set.")
     } finally {
       setDeletingSetId("")
+    }
+  }
+
+  async function translateSetForExport() {
+    if (!selectedSet) return
+    if (!canUseSetTranslation(profile)) {
+      setMessage("Fungsi terjemah BI hanya untuk admin dan pengguna premium.")
+      return
+    }
+
+    const rowsToTranslate = selectedItems.filter((row) => {
+      if (!row.item) return false
+      return itemNeedsSetTranslation(row.item)
+    })
+
+    if (rowsToTranslate.length === 0) {
+      setMessage("Semua item dalam set ini sudah dikesan mempunyai Bahasa Inggeris.")
+      return
+    }
+
+    setTranslatingSet(true)
+    setMessage(`Menterjemah ${rowsToTranslate.length} item untuk export...`)
+
+    try {
+      const translatedByItemId = new Map<string, Partial<SavedItem>>()
+      let quotaText = ""
+
+      for (const [index, row] of rowsToTranslate.entries()) {
+        const item = row.item
+        if (!item) continue
+
+        setMessage(`Menterjemah item ${index + 1}/${rowsToTranslate.length} untuk export...`)
+
+        const { data, error } = await supabase.functions.invoke("translate-item-bilingual", {
+          body: {
+            subject: "Sains KSSM SPM 1511",
+            paper: item.paper,
+            section: item.section,
+            tingkatan: item.tingkatan,
+            item: {
+              stemText: item.stem_text || "",
+              answerSchemeText: item.answer_scheme_text || "",
+              explanationText: item.explanation_text || "",
+              options: sortOptions(item.item_options || []).map((option) => ({
+                label: option.option_label,
+                text: option.option_text || "",
+              })),
+              subQuestions: sortSubQuestions(item.item_subquestions || []).map((sub) => ({
+                id: sub.id,
+                label: sub.label,
+                subLabel: sub.sub_label,
+                questionText: sub.question_text || "",
+                answerSchemeText: sub.answer_scheme_text || "",
+              })),
+            },
+          },
+        })
+
+        if (error) throw error
+        if (data?.error) throw new Error(data.error)
+
+        const translated = data?.item
+        if (!translated) continue
+
+        translatedByItemId.set(item.id, applyTranslatedFields(item, translated))
+        quotaText = data?.quota?.remainingText || quotaText
+      }
+
+      if (translatedByItemId.size > 0) {
+        setSets((prev) =>
+          prev.map((set) => {
+            if (set.id !== selectedSet.id) return set
+
+            return {
+              ...set,
+              build_set_items: set.build_set_items.map((row) => {
+                const rowItems = Array.isArray(row.items) ? row.items : row.items ? [row.items] : []
+                const nextItems = rowItems.map((item) => {
+                  const translated = translatedByItemId.get(item.id)
+                  return translated ? { ...item, ...translated } : item
+                })
+
+                return {
+                  ...row,
+                  items: Array.isArray(row.items) ? nextItems : nextItems[0] || row.items,
+                }
+              }),
+            }
+          }),
+        )
+      }
+
+      setMessage(quotaText || "Terjemahan BI untuk set/export telah diisi. Sila semak sebelum muat turun.")
+    } catch (error: any) {
+      console.error("Set translation error", error)
+      setMessage(error.message || "Gagal terjemah BI untuk set.")
+    } finally {
+      setTranslatingSet(false)
     }
   }
 
@@ -946,6 +1048,17 @@ export default function SavedSetsPage() {
               >
                 {deletingSetId === selectedSet?.id ? "Memadam..." : "Padam Set"}
               </button>
+              {canUseSetTranslation(profile) && (
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => void translateSetForExport()}
+                  disabled={!selectedSet || translatingSet}
+                  title="Tambah terjemahan Bahasa Inggeris untuk set ini sahaja sebelum cetak atau muat turun."
+                >
+                  {translatingSet ? "Menterjemah..." : "Terjemah BI"}
+                </button>
+              )}
               <button
                 type="button"
                 className="btn btn-question"
@@ -1372,6 +1485,61 @@ function getSavedSetLimit(profile: { role?: string; account_type?: string } | nu
   if (profile.role === "admin") return 20
   if (profile.account_type === "full") return 15
   return 1
+}
+
+function canUseSetTranslation(profile: { role?: string; account_type?: string } | null) {
+  if (!profile) return false
+  return profile.role === "master_admin" || profile.role === "admin" || profile.account_type === "full"
+}
+
+function itemNeedsSetTranslation(item: SavedItem) {
+  const textParts = [
+    item.stem_text || "",
+    item.answer_scheme_text || "",
+    item.explanation_text || "",
+    ...(item.item_options || []).map((option) => option.option_text || ""),
+    ...(item.item_subquestions || []).flatMap((sub) => [
+      sub.question_text || "",
+      sub.answer_scheme_text || "",
+    ]),
+  ]
+
+  return textParts.some((text) => text.trim() && auditLanguageText(text) !== "bilingual")
+}
+
+function applyTranslatedFields(item: SavedItem, translated: any): Partial<SavedItem> {
+  const optionTextByLabel = new Map<string, string>()
+  for (const option of translated.options || []) {
+    if (option?.label) optionTextByLabel.set(String(option.label), option.text || "")
+  }
+
+  const subById = new Map<string, any>()
+  const subByLabel = new Map<string, any>()
+  for (const sub of translated.subQuestions || []) {
+    if (sub?.id) subById.set(String(sub.id), sub)
+    const key = `${sub?.label || ""}::${sub?.subLabel || ""}`
+    if (sub?.label) subByLabel.set(key, sub)
+  }
+
+  return {
+    stem_text: translated.stemText ?? item.stem_text,
+    answer_scheme_text: translated.answerSchemeText ?? item.answer_scheme_text,
+    explanation_text: translated.explanationText ?? item.explanation_text,
+    item_options: (item.item_options || []).map((option) => ({
+      ...option,
+      option_text: optionTextByLabel.get(option.option_label) ?? option.option_text,
+    })),
+    item_subquestions: (item.item_subquestions || []).map((sub) => {
+      const translatedSub = subById.get(sub.id) || subByLabel.get(`${sub.label}::${sub.sub_label || ""}`)
+      if (!translatedSub) return sub
+
+      return {
+        ...sub,
+        question_text: translatedSub.questionText ?? sub.question_text,
+        answer_scheme_text: translatedSub.answerSchemeText ?? sub.answer_scheme_text,
+      }
+    }),
+  }
 }
 
 function getGuestSavedSets() {
