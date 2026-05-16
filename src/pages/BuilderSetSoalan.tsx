@@ -125,10 +125,26 @@ export default function BuilderSetSoalan() {
     return selectedBidangCodes
   }, [selectedBidangCodes, topicSelectionMode, topicTargets])
 
+  const topicAvailableItems = useMemo(() => {
+    let source = baseAvailableItems
+
+    if (mode === "custom" && paper === "paper_1") {
+      source = source.filter((item) => item.item_type === "mcq")
+    }
+
+    if (paper === "paper_2" && section) {
+      source = source.filter((item) => item.section === section)
+    }
+
+    if (difficultyMode !== "random" && difficultyMode !== "distribution") {
+      source = source.filter((item) => item.difficulty_level === difficultyMode)
+    }
+
+    return source
+  }, [baseAvailableItems, difficultyMode, mode, paper, section])
+
   const bidangOptions = useMemo(() => {
-    const source = items.filter(
-      (item) => tingkatanValues.includes(item.tingkatan) && item.paper === paper,
-    )
+    const source = topicAvailableItems
     const map = new Map<string, { key: string; tingkatan: 4 | 5; code: string; name: string; count: number }>()
 
     source.forEach((item) => {
@@ -149,7 +165,7 @@ export default function BuilderSetSoalan() {
       if (a.tingkatan !== b.tingkatan) return a.tingkatan - b.tingkatan
       return naturalCodeSort(a.code, b.code)
     })
-  }, [items, paper, tingkatanValues])
+  }, [topicAvailableItems])
 
   const customPool = useMemo(() => {
     let pool = baseAvailableItems
@@ -763,7 +779,12 @@ export default function BuilderSetSoalan() {
                   <select
                     className="input"
                     value={section}
-                    onChange={(event) => setSection(event.target.value as SectionType)}
+                    onChange={(event) => {
+                      setSection(event.target.value as SectionType)
+                      setSelectedBidangCodes([])
+                      setTopicTargets({})
+                      setGeneratedSet([])
+                    }}
                   >
                     <option value="">Semua bahagian</option>
                     <option value="A">Bahagian A</option>
@@ -889,7 +910,7 @@ export default function BuilderSetSoalan() {
               </div>
 
               {bidangOptions.length === 0 ? (
-                <div className="empty-state">Tiada item published untuk tetapan kertas dan tingkatan ini.</div>
+                <div className="empty-state">Tiada item published untuk tetapan semasa.</div>
               ) : (
                 <div className="builder-topic-grid">
                   {bidangOptions.map((option) => (
